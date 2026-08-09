@@ -13,7 +13,15 @@ module.exports = async function handler(req, res) {
     const getRes = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_ID}/latest`, {
       headers: { 'X-Master-Key': JSONBIN_KEY }
     });
-    const state = (await getRes.json()).record;
+    if (!getRes.ok) {
+      const detail = await getRes.text();
+      return res.status(502).json({ error: 'Could not read account database — check JSONBIN_ID / JSONBIN_KEY', detail });
+    }
+    const parsed = await getRes.json();
+    const state = parsed && parsed.record ? parsed.record : null;
+    if (!state) {
+      return res.status(502).json({ error: 'Account database returned no data — check JSONBIN_ID' });
+    }
     state.users = state.users || [];
     let user = state.users.find(u => u.email === email);
     if (!user) {
