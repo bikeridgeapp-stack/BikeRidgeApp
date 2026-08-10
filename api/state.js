@@ -22,7 +22,7 @@ module.exports = async function handler(req, res) {
       return res.status(400).json({ error: 'Invalid state payload' });
     }
     const size = Buffer.byteLength(JSON.stringify(body));
-    if (size > 400 * 1024) {
+    if (size > 3 * 1024 * 1024) {
       return res.status(413).json({ error: 'State payload too large' });
     }
     try {
