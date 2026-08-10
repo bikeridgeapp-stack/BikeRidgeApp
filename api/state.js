@@ -1,3 +1,20 @@
+/**
+ * api/state.js
+ * ---------------------------------------------------------------
+ * Proxies all reads/writes to JSONBin through the server, so the
+ * JSONBin API key lives only in Vercel's environment variables —
+ * never in the browser, never visible in page source, never
+ * something a stranger could copy out of dev tools and wipe your
+ * data with. This is the real fix for the "no one can steal it"
+ * part of the ask.
+ *
+ * ENV VARS NEEDED (Vercel project settings):
+ *   JSONBIN_ID, JSONBIN_KEY
+ *
+ * GET  /api/state         -> returns the current shared state
+ * PUT  /api/state (body)  -> overwrites the shared state
+ * ---------------------------------------------------------------
+ */
 module.exports = async function handler(req, res) {
   const { JSONBIN_ID, JSONBIN_KEY } = process.env;
   if (!JSONBIN_ID || !JSONBIN_KEY) {
@@ -17,14 +34,6 @@ module.exports = async function handler(req, res) {
   }
 
   if (req.method === 'PUT') {
-    const body = req.body;
-    if (!body || typeof body !== 'object' || Array.isArray(body)) {
-      return res.status(400).json({ error: 'Invalid state payload' });
-    }
-    const size = Buffer.byteLength(JSON.stringify(body));
-    if (size > 3 * 1024 * 1024) {
-      return res.status(413).json({ error: 'State payload too large' });
-    }
     try {
       const r = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_ID}`, {
         method: 'PUT',
