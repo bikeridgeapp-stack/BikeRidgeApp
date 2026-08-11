@@ -34,6 +34,16 @@ module.exports = async function handler(req, res) {
   }
 
   if (req.method === 'PUT') {
+    // --- basic write validation so a stray bug or a malicious request can't
+    // corrupt or blow up the shared bin (defense in depth, not a full schema check) ---
+    const body = req.body;
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return res.status(400).json({ error: 'Invalid state payload' });
+    }
+    const size = Buffer.byteLength(JSON.stringify(body));
+    if (size > 3 * 1024 * 1024) { // 3MB cap — allows reference photos on listings, still blocks abuse/DoS-style writes
+      return res.status(413).json({ error: 'State payload too large' });
+    }
     try {
       const r = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_ID}`, {
         method: 'PUT',
