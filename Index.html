@@ -1,0 +1,2612 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#1B0F3D">
+<link rel="manifest" href="data:application/json;base64,eyJuYW1lIjogIkJpa2VSaWRnZSIsICJzaG9ydF9uYW1lIjogIkJpa2VSaWRnZSIsICJkZXNjcmlwdGlvbiI6ICJQZWVyLXRvLXBlZXIgYmlrZSwgZS1iaWtlLCBzY29vdGVyICYgc2thdGUgcmVudGFscyBcdTIwMTQgYW55d2hlcmUiLCAic3RhcnRfdXJsIjogIi8iLCAiZGlzcGxheSI6ICJzdGFuZGFsb25lIiwgImJhY2tncm91bmRfY29sb3IiOiAiIzFCMEYzRCIsICJ0aGVtZV9jb2xvciI6ICIjMUIwRjNEIiwgIm9yaWVudGF0aW9uIjogInBvcnRyYWl0In0=">
+<title>BikeRidge — Rides Anywhere</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  /* Color system: violet is the primary -- it reads "tech/premium/motion"
+     without being tied to any one vehicle type (green = bikes, usually).
+     Citron is a near-complement to violet on the wheel (blue-violet vs
+     yellow-green), so it pops hard as the action/CTA color while staying
+     in the same energetic, youthful register. Status colors stay
+     semantically consistent across both themes. */
+  :root{
+    --trail-green:#7C5CFC;
+    --hub-blue:#22D3C6;
+    --sos-red:#EF4444;
+    --amber:#C6F135;
+    --radius:14px;
+  }
+  [data-theme="dark"]{
+    --obsidian:#150C2E;
+    --panel:#1F1440;
+    --panel2:#271A52;
+    --text:#F3EFFF;
+    --text-dim:#B4A6E0;
+    --border:#3A2A6B;
+  }
+  [data-theme="light"]{
+    --obsidian:#F7F5FF;
+    --panel:#FFFFFF;
+    --panel2:#EFEAFB;
+    --text:#1B0F3D;
+    --text-dim:#6B5B99;
+    --border:#DDD3F7;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--obsidian);color:var(--text);}
+  .app{max-width:480px;margin:0 auto;min-height:100vh;background:var(--obsidian);display:flex;flex-direction:column;position:relative;}
+
+  header.top{padding:18px 20px 12px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);}
+  .brand{display:flex;align-items:center;gap:8px;font-weight:800;font-size:19px;letter-spacing:-0.02em;}
+  .brand .dot{width:10px;height:10px;border-radius:50%;background:var(--trail-green);box-shadow:0 0 10px var(--trail-green);}
+  .balance-chip{font-size:12px;color:var(--text-dim);background:var(--panel);border:1px solid var(--border);padding:6px 10px;border-radius:20px;}
+
+  nav.tabs{display:flex;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--obsidian);z-index:5;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+  nav.tabs::-webkit-scrollbar{display:none;}
+  nav.tabs button{flex:0 0 auto;min-width:76px;padding:13px 10px;background:none;border:none;color:var(--text-dim);font-size:13px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;}
+  .skeleton{background:linear-gradient(90deg, var(--panel2) 25%, var(--border) 37%, var(--panel2) 63%);background-size:400% 100%;animation:skeleton-pulse 1.4s ease infinite;border-radius:10px;}
+  @keyframes skeleton-pulse{0%{background-position:100% 50%;}100%{background-position:0 50%;}}
+  nav.tabs button.active{color:var(--trail-green);border-bottom-color:var(--trail-green);}
+  .tab-badge{display:inline-block;background:var(--sos-red);color:#fff;font-size:9.5px;font-weight:800;border-radius:8px;padding:1px 5px;margin-left:3px;vertical-align:top;}
+
+  main{flex:1;overflow-y:auto;padding-bottom:90px;}
+  .screen{display:none;padding:16px 18px;}
+  .screen.active{display:block;}
+
+  /* MAP */
+  .map-wrap{position:relative;border-radius:var(--radius);overflow:hidden;border:1px solid var(--border);height:340px;background:
+      radial-gradient(circle at 20% 30%, #16231d 0, transparent 40%),
+      radial-gradient(circle at 80% 70%, #14201a 0, transparent 45%),
+      repeating-linear-gradient(0deg, #101614 0 40px, #0d1210 40px 41px),
+      repeating-linear-gradient(90deg, #101614 0 40px, #0d1210 40px 41px);
+  }
+  .pin{position:absolute;width:26px;height:26px;border-radius:50% 50% 50% 0;transform:translate(-50%,-100%) rotate(-45deg);cursor:pointer;border:2px solid var(--obsidian);display:flex;align-items:center;justify-content:center;transition:transform .15s;}
+  .pin:hover{transform:translate(-50%,-100%) rotate(-45deg) scale(1.15);}
+  .pin.available{background:var(--trail-green);}
+  .pin.reserved{background:var(--amber);}
+  .pin.in_use{background:var(--sos-red);}
+  .pin span{transform:rotate(45deg);font-size:11px;font-weight:800;color:#0A0F0D;}
+  .you{position:absolute;width:14px;height:14px;border-radius:50%;background:var(--hub-blue);box-shadow:0 0 0 6px rgba(46,157,255,.25);transform:translate(-50%,-50%);}
+  .legend{display:flex;gap:14px;margin-top:10px;font-size:11px;color:var(--text-dim);flex-wrap:wrap;}
+  .legend span{display:inline-flex;align-items:center;gap:5px;}
+  .legend i{width:9px;height:9px;border-radius:50%;display:inline-block;}
+
+  h1.page-title{font-size:20px;margin:2px 0 4px;letter-spacing:-0.02em;}
+  p.sub{color:var(--text-dim);font-size:13px;margin:0 0 14px;}
+
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:12px;}
+  .card.tight{padding:12px 14px;}
+  .card h3{margin:0 0 6px;font-size:14px;}
+  .row{display:flex;justify-content:space-between;align-items:center;}
+  .row + .row{margin-top:8px;}
+  .muted{color:var(--text-dim);font-size:12.5px;}
+
+  label{display:block;font-size:12px;color:var(--text-dim);margin:12px 0 5px;}
+  input, select{width:100%;padding:11px 12px;border-radius:10px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:14px;}
+  input:focus, select:focus{outline:none;border-color:var(--trail-green);}
+
+  button.btn{width:100%;padding:13px;border-radius:12px;border:none;font-weight:700;font-size:14.5px;cursor:pointer;margin-top:14px;}
+  .btn-primary{background:var(--trail-green);color:#08120D;}
+  .btn-primary:disabled{background:#2b3a33;color:#6d7d76;cursor:not-allowed;}
+  .btn-secondary{background:var(--panel2);color:var(--text);border:1px solid var(--border);}
+  .btn-danger{background:var(--sos-red);color:#fff;}
+  .btn-blue{background:var(--hub-blue);color:#fff;}
+  .btn-small{width:auto;padding:8px 14px;font-size:12.5px;margin-top:0;border-radius:9px;}
+
+  .badge{font-size:10.5px;font-weight:800;padding:3px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:.03em;}
+  .badge.available{background:rgba(0,230,118,.15);color:var(--trail-green);}
+  .badge.reserved{background:rgba(255,176,32,.15);color:var(--amber);}
+  .badge.in_use{background:rgba(255,59,48,.15);color:var(--sos-red);}
+
+  #qrcode{background:#fff;padding:14px;border-radius:12px;display:flex;justify-content:center;margin:10px 0;}
+  .split-bar{display:flex;height:10px;border-radius:6px;overflow:hidden;margin:8px 0;}
+  .split-bar .owner{background:var(--trail-green);}
+  .split-bar .platform{background:var(--hub-blue);}
+
+  .toast{position:fixed;left:50%;bottom:100px;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--border);padding:11px 18px;border-radius:30px;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.4);z-index:50;opacity:0;transition:opacity .25s, bottom .25s;pointer-events:none;max-width:90%;text-align:center;}
+  .toast.show{opacity:1;bottom:120px;}
+  .toast.err{border-color:var(--sos-red);color:#ffb3ae;}
+  .toast.ok{border-color:var(--trail-green);color:#a9ffce;}
+
+  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.65);display:none;align-items:flex-end;justify-content:center;z-index:60;}
+  .modal-bg.show{display:flex;}
+  .modal{background:var(--panel);border:1px solid var(--border);border-top-left-radius:20px;border-top-right-radius:20px;width:100%;max-width:480px;padding:20px;max-height:85vh;overflow-y:auto;}
+  .modal-handle{width:36px;height:4px;background:var(--border);border-radius:3px;margin:0 auto 14px;}
+  .close-x{position:absolute;right:18px;top:16px;background:none;border:none;color:var(--text-dim);font-size:20px;cursor:pointer;}
+
+  .sos-panel{background:var(--sos-red);color:#fff;padding:14px;border-radius:12px;margin-top:12px;font-size:13px;font-weight:600;line-height:1.5;display:none;}
+  .sos-panel.show{display:block;}
+
+  .photo-slot{border:1px dashed var(--border);border-radius:12px;padding:16px;text-align:center;margin-top:10px;cursor:pointer;}
+  .photo-slot.done{border-color:var(--trail-green);background:rgba(0,230,118,.06);}
+  .photo-slot .icon{font-size:22px;}
+
+  .chip-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;}
+  .chip{padding:8px 12px;border-radius:20px;border:1px solid var(--border);background:var(--panel2);font-size:12.5px;cursor:pointer;color:var(--text-dim);}
+  .chip.active{border-color:var(--sos-red);color:var(--sos-red);background:rgba(255,59,48,.08);}
+  #communityFilterRow .chip.active{border-color:var(--trail-green);color:var(--trail-green);background:rgba(124,92,252,.12);}
+
+  .stat{text-align:center;flex:1;}
+  .stat .num{font-size:22px;font-weight:800;color:var(--trail-green);}
+  .stat .label{font-size:11px;color:var(--text-dim);margin-top:2px;}
+
+  table{width:100%;border-collapse:collapse;font-size:12.5px;}
+  table th{text-align:left;color:var(--text-dim);font-weight:600;padding:6px 4px;border-bottom:1px solid var(--border);}
+  table td{padding:8px 4px;border-bottom:1px solid var(--border);}
+
+  ::-webkit-scrollbar{width:0;height:0;}
+</style>
+<script>
+  (function(){
+    const saved = localStorage.getItem('bikeridge_theme');
+    const theme = saved || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+    document.documentElement.setAttribute('data-theme', theme);
+  })();
+</script>
+</head>
+<body>
+
+<!-- INSTALL GATE — real PWA install prompt, required before the app unlocks -->
+<div class="app" id="installGate" style="justify-content:center;align-items:center;text-align:center;padding:40px 28px;min-height:100vh;">
+  <div style="font-size:40px;">🚲</div>
+  <h1 style="font-size:22px;margin:14px 0 6px;">BikeRidge</h1>
+  <p class="muted" style="max-width:320px;">Peer-to-peer rides in <span id="heroLocationLabel">your city</span> — bikes, e-bikes, scooters, and more. Install the app to find a ride, list your own, and go in minutes.</p>
+  <button class="btn btn-primary" id="installBtn" style="max-width:260px;">Install now</button>
+  <button class="btn btn-secondary" id="skipInstallBtn" style="max-width:260px;">Continue in browser instead</button>
+  <p class="muted" style="margin-top:16px;font-size:11.5px;max-width:320px;" id="installHelp"></p>
+</div>
+
+<!-- AUTH GATE — real signup/login, passwords hashed client-side with SHA-256 -->
+<div class="app" id="authGate" style="display:none;justify-content:center;padding:50px 28px;min-height:100vh;">
+  <div style="width:100%;max-width:340px;margin:0 auto;">
+    <div class="brand" style="justify-content:center;margin-bottom:24px;"><span class="dot"></span>BikeRidge</div>
+    <div class="card">
+      <div class="row" style="margin-bottom:10px;">
+        <button class="chip" id="tabLogin" style="flex:1;text-align:center;" onclick="switchAuthTab('login')">Log in</button>
+        <button class="chip" id="tabSignup" style="flex:1;text-align:center;margin-left:8px;" onclick="switchAuthTab('signup')">Sign up</button>
+      </div>
+      <label style="margin-top:4px;">Email</label>
+      <input id="authEmail" type="email" placeholder="you@example.com">
+      <label>Password</label>
+      <input id="authPassword" type="password" placeholder="At least 6 characters">
+      <div id="authSignupExtra" style="display:none;">
+        <label>Display name</label>
+        <input id="authName" placeholder="What riders/owners see">
+        <label>Phone number</label>
+        <input id="authPhone" type="tel" placeholder="e.g. 604 555 0123">
+      </div>
+      <button class="btn btn-primary" id="authSubmitBtn" onclick="submitAuth()">Log in</button>
+      <p class="muted" id="authError" style="color:var(--sos-red);margin-top:8px;display:none;"></p>
+    </div>
+  </div>
+</div>
+
+<div class="app" id="mainApp" style="display:none;">
+
+  <header class="top">
+    <div class="brand"><span class="dot"></span>BikeRidge</div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <button class="balance-chip" id="themeToggle" onclick="toggleTheme()" style="border:1px solid var(--border);background:var(--panel);cursor:pointer;">🌙</button>
+      <div class="balance-chip" id="syncChip" style="border:1px solid var(--border);background:var(--panel);">⚡ Local only</div>
+      <div class="balance-chip" id="userChip" onclick="logOut()" style="cursor:pointer;" title="Tap to log out">👤 Guest</div>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="active" data-screen="map">Map</button>
+    <button data-screen="scan">Unlock</button>
+    <button data-screen="list">List a Ride</button>
+    <button data-screen="dashboard">Dashboard <span class="tab-badge" id="dashBadge" style="display:none;"></span></button>
+    <button data-screen="reviews">Reviews</button>
+    <button data-screen="community">Community</button>
+    <button data-screen="admin" id="adminTabBtn" style="display:none;">Admin</button>
+  </nav>
+
+  <main>
+    <!-- MAP SCREEN -->
+    <section class="screen active" id="screen-map">
+      <h1 class="page-title">Rides near you</h1>
+      <p class="sub" id="mapSubLabel">Finding your area… · live status, updates every few seconds</p>
+      <p class="muted" id="syncIndicator" style="font-size:10.5px;margin-top:-6px;">Not synced yet</p>
+      <div class="map-wrap" id="mapWrap"><div class="skeleton" id="mapSkeleton" style="width:100%;height:100%;"></div></div>
+      <div class="legend">
+        <span><i style="background:var(--trail-green)"></i>Available</span>
+        <span><i style="background:var(--amber)"></i>Reserved</span>
+        <span><i style="background:var(--sos-red)"></i>In use</span>
+        <span><i style="background:var(--hub-blue)"></i>You</span>
+      </div>
+      <div class="row" style="margin-top:14px;">
+        <span class="muted" style="font-size:12px;">Sort by</span>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-secondary btn-small" id="favToggleBtn" style="width:auto;margin:0;padding:6px 12px;font-size:12px;" onclick="toggleFavOnlyFilter()">⭐ Saved</button>
+          <button class="btn btn-secondary btn-small" id="sortToggleBtn" style="width:auto;margin:0;padding:6px 12px;font-size:12px;" onclick="toggleMapSort()">Nearest first</button>
+        </div>
+      </div>
+      <div id="bikeListMap" style="margin-top:10px;"></div>
+    </section>
+
+    <!-- UNLOCK / SCAN SCREEN -->
+    <section class="screen" id="screen-scan">
+      <h1 class="page-title">Unlock a bike</h1>
+      <p class="sub">Enter the code printed on the bike's QR tag (camera scanning isn't available in this browser preview — type the code instead).</p>
+      <div class="card">
+        <label>Bike code</label>
+        <input id="unlockCode" placeholder="e.g. BR-4821" style="text-transform:uppercase" oninput="this.value = this.value.toUpperCase();">
+        <button class="btn btn-primary" onclick="attemptUnlock()">Find bike</button>
+      </div>
+      <div class="card" id="unlockResult" style="display:none;"></div>
+    </section>
+
+    <!-- LIST YOUR RIDE SCREEN -->
+    <section class="screen" id="screen-list">
+      <h1 class="page-title">List your ride</h1>
+      <p class="sub">Set your own price. Riders pay you directly — you confirm each payment yourself.</p>
+
+      <div class="card" id="sellerStatusCard"></div>
+
+      <div class="card" id="listingFormCard" style="display:none;">
+        <label>What are you listing?</label>
+        <select id="newBikeType" style="width:100%;padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--panel2);color:var(--text);margin-bottom:12px;">
+          <option value="Bike">🚲 Bike</option>
+          <option value="E-Bike">⚡ E-Bike</option>
+          <option value="Scooter">🛴 Scooter</option>
+          <option value="E-Scooter">⚡ E-Scooter</option>
+          <option value="Rollerskates">🛼 Rollerskates</option>
+          <option value="Skateboard">🛹 Skateboard</option>
+          <option value="Other">🔧 Other</option>
+        </select>
+        <label>Name</label>
+        <input id="newBikeName" placeholder="e.g. Trek FX2 Hybrid">
+        <label>Your hourly rate — you set this, you keep every dollar</label>
+        <input id="newBikePrice" type="number" min="0.5" step="0.5" placeholder="e.g. 5" value="5">
+        <label>Reference photo (this is what every rider's photo gets checked against)</label>
+        <label class="photo-slot" id="slotListingPhoto" for="newBikePhoto" style="margin-top:6px;">
+          <div class="icon">📷</div><div style="font-size:12.5px;margin-top:4px;">Add a clear photo of the actual item</div>
+        </label>
+        <input type="file" id="newBikePhoto" accept="image/*" capture="environment" style="display:none;" onchange="captureListingPhoto(this)">
+        <label style="margin-top:8px;">Extra photos (optional, up to 2 more)</label>
+        <label class="photo-slot" id="slotExtraPhoto" for="newBikeExtraPhoto" style="height:56px;">
+          <div class="icon" style="font-size:18px;">➕</div><div style="font-size:11px;margin-top:2px;" id="extraPhotoLabel">Add another angle</div>
+        </label>
+        <input type="file" id="newBikeExtraPhoto" accept="image/*" style="display:none;" onchange="addExtraListingPhoto(this)">
+        <label style="margin-top:12px;">Your payment instructions (shown to every renter)</label>
+        <input id="newBikePaymentInstructions" placeholder="e.g. E-transfer to you@email.com, include code">
+        <label>Pin location (tap map to set, or use default)</label>
+        <div class="map-wrap" id="pinMapWrap" style="height:200px;margin-top:6px;"></div>
+        <p class="muted" id="pinCoords" style="margin-top:8px;">Tap the map above to place your pin.</p>
+        <button class="btn btn-primary" onclick="createListing()">Generate QR tag</button>
+      </div>
+    </section>
+
+    <!-- DASHBOARD SCREEN -->
+    <section class="screen" id="screen-dashboard">
+      <h1 class="page-title">Dashboard</h1>
+      <p class="sub">Your earnings, rides, and split — <span id="dashUserLabel">Guest</span></p>
+
+      <div class="card" id="payoutNote">
+        <h3 style="margin-top:0;">💵 Getting paid</h3>
+        <p class="muted">Riders pay you directly (cash, e-transfer, etc — whatever you set in your listing). This app never touches the money — you confirm each payment yourself below once you've actually received it.</p>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top:0;">Rentals waiting on you</h3>
+        <div id="pendingRentalsList"><p class="muted">No rentals waiting on you right now.</p></div>
+      </div>
+
+      <div class="card">
+        <div class="row">
+          <div class="stat"><div class="num" id="statEarnings">$0</div><div class="label">Paid to you</div></div>
+          <div class="stat"><div class="num" id="statSpent">$0</div><div class="label">Spent (rider)</div></div>
+          <div class="stat"><div class="num" id="statRides">0</div><div class="label">Rides</div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Your listed bikes</h3>
+        <table id="myBikesTable"><thead><tr><th>Bike</th><th>Status</th><th>Earned</th></tr></thead><tbody></tbody></table>
+        <p class="muted" id="myBikesEmpty" style="display:none;">You haven't listed any rides yet.</p>
+        <button class="btn btn-secondary btn-small" style="margin-top:10px;" onclick="exportPayoutHistoryCSV()">⬇ Export payout history (CSV)</button>
+      </div>
+
+      <div class="card">
+        <h3>Ride history</h3>
+        <table id="rideHistoryTable"><thead><tr><th>Bike</th><th>Role</th><th>Amount</th></tr></thead><tbody></tbody></table>
+        <p class="muted" id="rideHistoryEmpty" style="display:none;">No rides yet.</p>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top:0;">Messages</h3>
+        <div id="chatThreadsList"><p class="muted">No conversations yet.</p></div>
+      </div>
+
+      <div class="card">
+        <div class="row" style="cursor:pointer;" onclick="toggleReportForm()">
+          <h3 style="margin-top:0;">Report an issue</h3>
+          <span class="muted" id="reportToggleLabel">▾</span>
+        </div>
+        <div id="reportFormWrap" style="display:none;margin-top:10px;">
+          <div class="chip-row" id="issueChips">
+            <div class="chip" data-issue="Stolen/Missing Bike">Stolen/Missing</div>
+            <div class="chip" data-issue="Mechanical Failure">Mechanical Failure</div>
+            <div class="chip" data-issue="Physical Damage">Physical Damage</div>
+            <div class="chip" data-issue="Abandoned/Bad Parking">Bad Parking</div>
+          </div>
+          <label>Bike code</label>
+          <input id="reportBikeCode" placeholder="e.g. BR-4821">
+          <label>Details</label>
+          <input id="reportDetails" placeholder="What happened?">
+          <div class="photo-slot" id="evidenceSlot" onclick="attachEvidence()">
+            <div class="icon">📷</div>
+            <div style="font-size:12.5px;margin-top:4px;">Tap to attach evidence photo</div>
+          </div>
+          <button class="btn btn-danger" onclick="submitReport()">Submit report</button>
+          <h3 style="margin-top:16px;">Past reports</h3>
+          <table id="reportsTable"><thead><tr><th>Bike</th><th>Type</th><th>Status</th></tr></thead><tbody></tbody></table>
+          <p class="muted" id="reportsEmpty" style="display:none;">No reports filed.</p>
+        </div>
+      </div>
+
+      <p class="muted" style="text-align:center;margin-top:4px;"><a href="#" onclick="openTrustModal();return false;" style="color:var(--hub-blue);">How BikeRidge keeps you safe →</a></p>
+    </section>
+
+    <!-- REVIEWS SCREEN -->
+    <section class="screen" id="screen-reviews">
+      <h1 class="page-title">Reviews</h1>
+      <p class="sub">What riders are saying across BikeRidge.</p>
+      <div id="reviewsFeed"></div>
+    </section>
+
+    <!-- COMMUNITY SCREEN -->
+    <section class="screen" id="screen-community">
+      <h1 class="page-title">Community</h1>
+      <p class="sub">Talk rides, promote your listing, ask questions — real people, real riders.</p>
+
+      <div class="card" id="newPostCard">
+        <label style="margin-top:0;">Group</label>
+        <select id="newPostGroup" style="width:100%;padding:11px 12px;border-radius:10px;border:1px solid var(--border);background:var(--panel2);color:var(--text);margin-bottom:10px;">
+          <option value="General">💬 General</option>
+          <option value="Promote">📣 Promote your ride</option>
+          <option value="Buy/Sell">🏷️ Buy / Sell / Trade</option>
+          <option value="Help">🆘 Help & questions</option>
+          <option value="Meetups">🗓️ Meetups & events</option>
+        </select>
+        <textarea id="newPostText" placeholder="What's up?" maxlength="500" oninput="document.getElementById('postCharCount').textContent = this.value.length + '/500'" style="width:100%;min-height:70px;padding:11px 12px;border-radius:10px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-family:inherit;font-size:14px;resize:vertical;"></textarea>
+        <div class="muted" id="postCharCount" style="font-size:10.5px;text-align:right;margin-top:2px;">0/500</div>
+        <label class="photo-slot" id="slotPostPhoto" for="newPostPhoto" style="margin-top:8px;height:70px;">
+          <div class="icon" style="font-size:20px;">📷</div><div style="font-size:11.5px;margin-top:2px;">Add a photo (optional)</div>
+        </label>
+        <input type="file" id="newPostPhoto" accept="image/*" style="display:none;" onchange="attachPostPhoto(this)">
+        <button class="btn btn-primary" onclick="createPost()">Post</button>
+        <p class="muted" style="font-size:11px;margin-top:6px;">Photos only for now — no video hosting yet. Posts are public to everyone on BikeRidge.</p>
+      </div>
+
+      <input id="communitySearchInput" placeholder="🔍 Search posts, people, groups…" style="margin:12px 0 0;" oninput="searchCommunity(this.value)">
+
+      <div class="row" style="gap:6px;margin:14px 0 4px;flex-wrap:wrap;" id="communityFilterRow">
+        <button class="chip active" data-group="All" onclick="setCommunityFilter('All')">All</button>
+        <button class="chip" data-group="General" onclick="setCommunityFilter('General')">💬 General</button>
+        <button class="chip" data-group="Promote" onclick="setCommunityFilter('Promote')">📣 Promote</button>
+        <button class="chip" data-group="Buy/Sell" onclick="setCommunityFilter('Buy/Sell')">🏷️ Buy/Sell</button>
+        <button class="chip" data-group="Help" onclick="setCommunityFilter('Help')">🆘 Help</button>
+        <button class="chip" data-group="Meetups" onclick="setCommunityFilter('Meetups')">🗓️ Meetups</button>
+      </div>
+
+      <div id="communityFeed">
+        <div class="skeleton" style="height:80px;margin-bottom:10px;"></div>
+        <div class="skeleton" style="height:80px;margin-bottom:10px;"></div>
+      </div>
+    </section>
+
+    <!-- ADMIN SCREEN -->
+    <section class="screen" id="screen-admin">
+      <h1 class="page-title">Admin</h1>
+      <p class="sub">Approve seller fee payments and set your own payout instructions.</p>
+      <div id="adminContent"></div>
+    </section>
+  </main>
+</div>
+
+<!-- RENTAL MODAL -->
+<div class="modal-bg" id="rentalModalBg">
+  <div class="modal" style="position:relative;">
+    <button class="close-x" onclick="closeModal()">✕</button>
+    <div class="modal-handle"></div>
+    <div id="rentalModalBody"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ===================== STATE / STORAGE (server-proxied, key never exposed) ===================== */
+const STORAGE_KEY = 'bikeridge_state_v1';
+
+function defaultState(){
+  return { currentUser: 'Guest', bikes: [], reports: [], nextCode: 1001, ledger: [], users: [], sellerRequests: [], posts: [] };
+}
+
+function loadLocalCache(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(raw) return JSON.parse(raw);
+  }catch(e){}
+  return defaultState();
+}
+function saveLocalCache(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+
+/* Every read/write goes through /api/state — the server holds the real
+   JSONBin key, so it never sits in this page's JavaScript where anyone
+   could copy it out of dev tools. Falls back to a local cache if the
+   network call fails, so a bad connection doesn't break the UI. */
+let lastSyncTs = null;
+async function loadState(){
+  try{
+    const res = await fetch('/api/state');
+    if(!res.ok) throw new Error('state fetch failed');
+    const remote = await res.json();
+    lastSyncTs = Date.now();
+    if(remote && remote.bikes) return remote;
+    return defaultState();
+  }catch(e){
+    console.warn('Could not reach the server, using local cache', e);
+    return loadLocalCache();
+  }
+}
+
+function updateSyncIndicator(){
+  const el = document.getElementById('syncIndicator');
+  if(!el) return;
+  if(!lastSyncTs){ el.textContent = 'Not synced yet'; return; }
+  const secs = Math.round((Date.now() - lastSyncTs)/1000);
+  el.textContent = secs < 3 ? 'Synced just now' : `Synced ${secs}s ago`;
+}
+
+let _saveTimer = null;
+function saveState(){
+  saveLocalCache(); // instant local mirror so the UI stays snappy
+  clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(async ()=>{
+    try{
+      await fetch('/api/state', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(state)
+      });
+    }catch(e){
+      console.warn('Save failed', e);
+      toast('Sync failed — saved locally only.', 'err');
+    }
+  }, 300);
+}
+
+/* Flushes immediately instead of debouncing — required before any action
+   that depends on the server already seeing this write (e.g. sending a
+   verification email right after creating the account). Using the
+   debounced saveState() there was the actual cause of "verification
+   doesn't work": the email got requested before the new account had
+   finished saving, so the server couldn't find it yet. */
+async function saveStateNow(){
+  saveLocalCache();
+  clearTimeout(_saveTimer);
+  try{
+    await fetch('/api/state', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(state)
+    });
+    return true;
+  }catch(e){
+    console.warn('Immediate save failed', e);
+    toast('Could not reach the server — try again.', 'err');
+    return false;
+  }
+}
+
+function seedBikes(){
+  return []; // production — no demo listings, real owners populate this
+}
+
+let state = defaultState(); // replaced by loadState() once the app boots (see bottom of script)
+
+/* ===================== HELPERS ===================== */
+function toggleTheme(){
+  const current = document.documentElement.getAttribute('data-theme');
+  const next = current === 'light' ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('bikeridge_theme', next);
+  updateThemeIcon();
+}
+function updateThemeIcon(){
+  const btn = document.getElementById('themeToggle');
+  if(btn) btn.textContent = document.documentElement.getAttribute('data-theme') === 'light' ? '☀️' : '🌙';
+}
+updateThemeIcon();
+
+function toast(msg, type=''){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + type;
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(()=>{ t.className = 'toast ' + type; }, 2600);
+}
+
+function currentUser(){
+  const session = getSession();
+  if(!session) return 'Guest';
+  const u = (state.users||[]).find(u=>u.email===session.email);
+  return u ? u.name : (state.currentUser || 'Guest');
+}
+
+function fmt(n){ return '$' + Number(n).toFixed(2).replace(/\.00$/,''); }
+
+/* Escapes any user-typed string before it's inserted into innerHTML.
+   Without this, someone could type e.g. a bike name containing a
+   <script> tag and have it actually execute in every other visitor's
+   browser — this closes that hole everywhere user text is displayed. */
+function esc(str){
+  if(str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// Turns any URL inside payment instructions into a "Preview payment page"
+// button that opens an in-app iframe instead of a normal link. This stops
+// the classic scam where a link is swapped after the fact, or a rider is
+// sent to a lookalike page outside anything BikeRidge can show them —
+// they see the real destination rendered right here before paying anything.
+const URL_PATTERN = /(https?:\/\/[^\s]+)/g;
+function linkifyPaymentInstructions(text){
+  if(!text) return 'This owner hasn\'t set payment instructions yet.';
+  const escaped = esc(text);
+  return escaped.replace(URL_PATTERN, (url)=>{
+    const safeUrl = esc(url);
+    return `<button class="btn btn-secondary btn-small" style="width:auto;display:inline-block;padding:6px 12px;margin:4px 0;font-size:12px;" onclick="openLinkPreview('${safeUrl}')">🔎 Preview payment page</button>`;
+  });
+}
+
+let linkPreviewModalOpen = false;
+function openLinkPreview(url){
+  const bg = document.createElement('div');
+  bg.className = 'modal-bg show';
+  bg.id = 'linkPreviewBg';
+  bg.style.zIndex = '999';
+  bg.innerHTML = `
+    <div class="modal" style="max-width:520px;height:80vh;display:flex;flex-direction:column;padding:0;overflow:hidden;">
+      <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="font-weight:700;font-size:13px;">Payment page preview</div>
+          <div class="muted" style="font-size:11px;word-break:break-all;">${esc(url)}</div>
+        </div>
+        <button class="btn btn-secondary btn-small" style="width:auto;margin:0;padding:8px 14px;" onclick="closeLinkPreview()">✕</button>
+      </div>
+      <iframe src="${esc(url)}" style="flex:1;border:none;width:100%;background:#fff;"></iframe>
+      <div style="padding:10px 16px;border-top:1px solid var(--border);">
+        <a href="${esc(url)}" target="_blank" rel="noopener noreferrer" class="muted" style="font-size:11.5px;">Open in a new tab instead →</a>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(bg);
+}
+function closeLinkPreview(){
+  const bg = document.getElementById('linkPreviewBg');
+  if(bg) bg.remove();
+}
+
+/* release stale reservations after 5 min (freshness / non-staling requirement) */
+// Anti-fraud: tracks a strike against a rider's account when they reserve a
+// bike and then never follow through (either they cancel it themselves, or
+// it silently expires after 5 minutes untouched). Shown to owners before
+// they confirm payment so a pattern of no-shows is visible up front.
+function recordNoShow(bike){
+  if(!bike || !bike.reservedByEmail) return;
+  state.users = state.users || [];
+  let user = state.users.find(u=>u.email===bike.reservedByEmail);
+  if(user){ user.noShowCount = (user.noShowCount||0) + 1; }
+  else { state.users.push({ email: bike.reservedByEmail, name: bike.reservedBy||'Rider', noShowCount: 1 }); }
+}
+
+function releaseStaleReservations(){
+  const FIVE_MIN = 5*60*1000;
+  let changed = false;
+  state.bikes.forEach(b=>{
+    if(b.status==='reserved' && b.reservedAt && (Date.now()-b.reservedAt) > FIVE_MIN){
+      recordNoShow(b);
+      b.status = 'available';
+      delete b.reservedAt; delete b.reservedBy; delete b.reservedByEmail; delete b.pendingHours; delete b.pendingTotal; delete b.paymentConfirmed;
+      changed = true;
+    }
+  });
+  if(changed){ saveState(); renderAll(); }
+}
+setInterval(releaseStaleReservations, 4000);
+
+/* ===================== NOTIFICATION BADGE (unread chats + pending payments) ===================== */
+function lastDashSeenTs(){
+  return parseInt(localStorage.getItem('bikeridge_dash_last_seen')||'0', 10);
+}
+function clearUnreadBadge(screenName){
+  if(screenName !== 'dashboard') return;
+  localStorage.setItem('bikeridge_dash_last_seen', String(Date.now()));
+  const badge = document.getElementById('dashBadge');
+  if(badge){ badge.style.display = 'none'; badge.textContent = ''; }
+}
+function updateUnreadBadge(){
+  const badge = document.getElementById('dashBadge');
+  if(!badge) return;
+  const session = getSession();
+  if(!session){ badge.style.display = 'none'; return; }
+  const lastSeen = lastDashSeenTs();
+  const myEmail = session.email;
+
+  let unreadMsgs = 0;
+  Object.entries(state.chats||{}).forEach(([id, thread])=>{
+    const bikeCode = id.split('__')[0];
+    const bike = (state.bikes||[]).find(b=>b.code===bikeCode);
+    const involvesMe = id.includes(myEmail) || (bike && bike.ownerEmail === myEmail);
+    if(!involvesMe) return;
+    unreadMsgs += (thread.messages||[]).filter(m => m.senderEmail !== myEmail && m.ts > lastSeen).length;
+  });
+
+  const pendingPayments = (state.bikes||[]).filter(b=>b.ownerEmail===myEmail && b.status==='reserved' && !b.paymentConfirmed && b.pendingTotal).length;
+
+  const total = unreadMsgs + pendingPayments;
+  if(total > 0){
+    badge.textContent = total > 9 ? '9+' : String(total);
+    badge.style.display = 'inline-block';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+/* ===================== NAV ===================== */
+function switchScreen(name){
+  document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.toggle('active', b.dataset.screen===name));
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  const el = document.getElementById('screen-'+name);
+  if(el) el.classList.add('active');
+  if(name==='dashboard'){ renderDashboard(); renderPendingRentalPayments(); renderReports(); renderChatThreadsList(); }
+  if(name==='reviews') renderReviewsFeed();
+  if(name==='list') renderSellerStatusCard();
+  if(name==='admin') renderAdminScreen();
+  if(name==='community') renderCommunityFeed();
+  clearUnreadBadge(name);
+}
+
+document.querySelectorAll('nav.tabs button').forEach(btn=>{
+  btn.addEventListener('click', ()=> switchScreen(btn.dataset.screen));
+});
+
+/* ===================== MAP RENDER (real Leaflet map, real streets) ===================== */
+function statusLabel(s){ return s==='available' ? 'A' : s==='reserved' ? 'R' : 'U'; }
+
+let mainMap = null;
+let mainMapMarkers = [];
+
+function pinColor(status){
+  return status==='available' ? '#16C79A' : status==='reserved' ? '#F59E0B' : '#EF4444';
+}
+
+function makeDivIcon(status, label){
+  return L.divIcon({
+    className: '',
+    html: `<div style="width:26px;height:26px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:${pinColor(status)};border:2px solid var(--obsidian);display:flex;align-items:center;justify-content:center;"><span style="transform:rotate(45deg);font-size:11px;font-weight:800;color:#0A0F0D;">${label}</span></div>`,
+    iconSize: [26, 26],
+    iconAnchor: [13, 26]
+  });
+}
+
+function vehicleIcon(type){
+  return {'Bike':'🚲','E-Bike':'⚡🚲','Scooter':'🛴','E-Scooter':'⚡🛴','Rollerskates':'🛼','Skateboard':'🛹'}[type] || '🔧';
+}
+
+function renderMap(){
+  const container = document.getElementById('mapWrap');
+  if(!mainMap){
+    mainMap = L.map(container, { zoomControl: true }).setView(userLocation ? [userLocation.lat, userLocation.lng] : [20, 0], userLocation ? 14 : 2);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors',
+      maxZoom: 19
+    }).addTo(mainMap);
+
+    if(userLocation){
+      L.circleMarker([userLocation.lat, userLocation.lng], {
+        radius: 7, color: '#22D3C6', fillColor: '#22D3C6', fillOpacity: 0.9, weight: 2
+      }).addTo(mainMap).bindPopup('You');
+    }
+  }
+
+  mainMapMarkers.forEach(m=>mainMap.removeLayer(m));
+  mainMapMarkers = [];
+
+  state.bikes.forEach(b=>{
+    if(typeof b.lat !== 'number' || typeof b.lng !== 'number') return;
+    const marker = L.marker([b.lat, b.lng], { icon: makeDivIcon(b.status, statusLabel(b.status)) }).addTo(mainMap);
+    marker.bindPopup(`<strong>${vehicleIcon(b.type)} ${esc(b.name)}</strong><br>${esc(b.code)} · ${fmt(b.price)}/hr<br>${b.status.replace('_',' ')}`);
+    marker.on('click', ()=> openRentalModal(b.code));
+    mainMapMarkers.push(marker);
+  });
+
+  setTimeout(()=>{ if(mainMap) mainMap.invalidateSize(); }, 50);
+
+  const list = document.getElementById('bikeListMap');
+  if(!list) return;
+
+  if(state.bikes.length === 0){
+    list.innerHTML = `<div class="card" style="text-align:center;">
+      <div style="font-size:32px;">🚲</div>
+      <p class="muted" style="margin:8px 0 12px;">No rides near you yet — be the first to list one.</p>
+      <button class="btn btn-primary" style="width:auto;padding:10px 20px;" onclick="switchScreen('list')">List a ride</button>
+    </div>`;
+    return;
+  }
+  if(favOnlyFilter && getFavorites().length === 0){
+    list.innerHTML = `<div class="card" style="text-align:center;"><p class="muted">No saved listings yet — tap ☆ on any ride to save it.</p></div>`;
+    return;
+  }
+
+  let bikes = state.bikes.slice();
+  if(favOnlyFilter){
+    const favs = getFavorites();
+    bikes = bikes.filter(b=>favs.includes(b.code));
+  }
+  if(mapSortNearest && userLocation){
+    bikes.sort((a,b)=>{
+      const da = (typeof a.lat==='number') ? haversineMeters(userLocation, {lat:a.lat,lng:a.lng}) : Infinity;
+      const db = (typeof b.lat==='number') ? haversineMeters(userLocation, {lat:b.lat,lng:b.lng}) : Infinity;
+      return da - db;
+    });
+  }
+
+  list.innerHTML = bikes.map(b=>{
+    const rating = bikeAvgRating(b.code);
+    const dist = (mapSortNearest && userLocation && typeof b.lat==='number')
+      ? Math.round(haversineMeters(userLocation, {lat:b.lat,lng:b.lng}))
+      : null;
+    const distLabel = dist !== null ? (dist < 1000 ? `${dist}m away` : `${(dist/1000).toFixed(1)}km away`) : '';
+    return `
+    <div class="card tight row" style="cursor:pointer" onclick="openRentalModal('${b.code}')">
+      <div>
+        <div style="font-weight:700;font-size:13.5px;">${vehicleIcon(b.type)} ${esc(b.name)} ${rating ? `<span style="color:var(--amber);font-size:11.5px;font-weight:600;">★ ${rating.avg} (${rating.count})</span>` : ''}</div>
+        <div class="muted">${esc(b.code)} · ${fmt(b.price)}/ride · owner ${esc(b.owner)}${distLabel ? ' · ' + distLabel : ''}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <button class="btn btn-secondary btn-small" style="width:auto;margin:0;padding:5px 8px;font-size:13px;" onclick="event.stopPropagation();toggleFavorite('${b.code}')">${isFavorited(b.code) ? '⭐' : '☆'}</button>
+        <span class="badge ${b.status}">${b.status.replace('_',' ')}</span>
+      </div>
+    </div>
+  `;
+  }).join('');
+}
+
+let mapSortNearest = false;
+let favOnlyFilter = false;
+function toggleMapSort(){
+  mapSortNearest = !mapSortNearest;
+  const btn = document.getElementById('sortToggleBtn');
+  if(btn) btn.textContent = mapSortNearest ? 'Newest first' : 'Nearest first';
+  renderMap();
+}
+function toggleFavOnlyFilter(){
+  favOnlyFilter = !favOnlyFilter;
+  const btn = document.getElementById('favToggleBtn');
+  if(btn) btn.style.color = favOnlyFilter ? 'var(--trail-green)' : '';
+  renderMap();
+}
+
+/* ===================== SAVED / FAVORITED LISTINGS ===================== */
+function getFavorites(){
+  try{ return JSON.parse(localStorage.getItem('bikeridge_favorites')||'[]'); }catch(e){ return []; }
+}
+function isFavorited(code){ return getFavorites().includes(code); }
+function toggleFavorite(code){
+  let favs = getFavorites();
+  if(favs.includes(code)) favs = favs.filter(c=>c!==code);
+  else favs.push(code);
+  localStorage.setItem('bikeridge_favorites', JSON.stringify(favs));
+  renderMap();
+  toast(favs.includes(code) ? 'Saved.' : 'Removed from saved.', '');
+}
+
+/* ===================== LIST BIKE (real map pin placement) ===================== */
+let pendingPin = null;
+let pinMap = null;
+let pinMarker = null;
+
+function renderPinMap(){
+  const container = document.getElementById('pinMapWrap');
+  if(pinMap){ pinMap.remove(); pinMap = null; pinMarker = null; }
+
+  pinMap = L.map(container).setView([49.2194, -122.6019], 14);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors',
+    maxZoom: 19
+  }).addTo(pinMap);
+
+  pinMap.on('click', (e)=>{
+    pendingPin = { lat: e.latlng.lat, lng: e.latlng.lng };
+    document.getElementById('pinCoords').textContent = `Pin set at ${e.latlng.lat.toFixed(5)}, ${e.latlng.lng.toFixed(5)}.`;
+    if(pinMarker) pinMap.removeLayer(pinMarker);
+    pinMarker = L.marker([e.latlng.lat, e.latlng.lng], { icon: makeDivIcon('available', '•') }).addTo(pinMap);
+  });
+
+  setTimeout(()=>{ if(pinMap) pinMap.invalidateSize(); }, 50);
+}
+
+// Compresses+resizes an image client-side (max 480px wide, JPEG q0.6) so
+// listing reference photos stay small enough for JSONBin's storage limits.
+function compressImageToBase64(file, maxW){
+  return new Promise((resolve, reject)=>{
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = ()=>{
+      URL.revokeObjectURL(url);
+      const scale = Math.min(1, maxW / img.width);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', 0.6).split(',')[1]);
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+let pendingListingPhotoB64 = null;
+let pendingExtraPhotos = [];
+async function addExtraListingPhoto(inputEl){
+  const file = inputEl.files[0];
+  if(!file) return;
+  if(pendingExtraPhotos.length >= 2){ toast('Max 2 extra photos.', 'err'); return; }
+  try{
+    const b64 = await compressImageToBase64(file, 480);
+    pendingExtraPhotos.push(b64);
+    document.getElementById('extraPhotoLabel').textContent = `${pendingExtraPhotos.length}/2 added`;
+    inputEl.value = '';
+  }catch(err){
+    toast('Could not read that photo.', 'err');
+  }
+}
+async function captureListingPhoto(inputEl){
+  const file = inputEl.files[0];
+  if(!file) return;
+  const slot = document.getElementById('slotListingPhoto');
+  slot.querySelector('div:last-child').textContent = 'Processing…';
+  try{
+    pendingListingPhotoB64 = await compressImageToBase64(file, 480);
+    slot.classList.add('done');
+    slot.querySelector('div:last-child').textContent = 'Reference photo saved ✓';
+  }catch(err){
+    toast('Could not read that photo — try another.', 'err');
+    slot.querySelector('div:last-child').textContent = 'Add a clear photo of the actual item';
+  }
+}
+
+function createListing(){
+  const type = document.getElementById('newBikeType').value;
+  const name = document.getElementById('newBikeName').value.trim();
+  const price = Math.max(0.5, parseFloat(document.getElementById('newBikePrice').value) || 5);
+  const paymentInstructions = document.getElementById('newBikePaymentInstructions').value.trim();
+  if(!name){ toast('Give it a name first.', 'err'); return; }
+  if(!paymentInstructions){ toast('Tell renters how to pay you.', 'err'); return; }
+  if(!pendingListingPhotoB64){ toast('Add a reference photo — this is what riders\' photos get checked against.', 'err'); return; }
+  if(!pendingPin){ toast('Tap the map to place the real location.', 'err'); return; }
+
+  const session = getSession();
+  const owner = session ? (state.users||[]).find(u=>u.email===session.email) : null;
+  if(!canCreateListing(owner)){
+    toast('You need an approved listing credit first — see the card above.', 'err');
+    return;
+  }
+  if(owner && !owner.unlimitedListings && !isAdmin()){
+    owner.listingCredits -= 1;
+  }
+
+  const code = 'BR-' + (state.nextCode++);
+  const bike = {code, type, name, owner: currentUser(), ownerEmail: session ? session.email : '', price, paymentInstructions, status:'available', lat:pendingPin.lat, lng:pendingPin.lng, earnings:0, rides:0, riderHistory:[], listingPhoto: pendingListingPhotoB64, extraPhotos: pendingExtraPhotos.slice()};
+  state.bikes.push(bike);
+  saveState();
+  renderAll();
+  renderSellerStatusCard();
+
+  document.getElementById('newBikeName').value = '';
+  document.getElementById('newBikePrice').value = '5';
+  document.getElementById('newBikePaymentInstructions').value = '';
+  pendingPin = null;
+  pendingListingPhotoB64 = null;
+  pendingExtraPhotos = [];
+  document.getElementById('extraPhotoLabel').textContent = 'Add another angle';
+  const slot = document.getElementById('slotListingPhoto');
+  slot.classList.remove('done');
+  slot.querySelector('div:last-child').textContent = 'Add a clear photo of the actual item';
+  showQrModal(bike);
+  toast('Listed — QR tag ready.', 'ok');
+}
+
+function copyToClipboard(text, label){
+  navigator.clipboard.writeText(text).then(()=>{
+    toast((label || 'Copied') + ' to clipboard.', 'ok');
+  }).catch(()=>{
+    toast('Could not copy — long-press the text to copy manually.', 'err');
+  });
+}
+
+function showQrModal(bike){
+  const body = document.getElementById('rentalModalBody');
+  body.innerHTML = `
+    <h3 style="margin-top:0;">${vehicleIcon(bike.type)} ${esc(bike.name)}</h3>
+    <p class="muted">Code: <strong>${esc(bike.code)}</strong> — print this tag and attach it to the bike.
+      <button class="btn btn-secondary btn-small" style="width:auto;display:inline-block;padding:4px 10px;margin:0 0 0 6px;font-size:11px;" onclick="copyToClipboard('${esc(bike.code)}','Bike code')">📋 Copy</button>
+    </p>
+    <div id="qrcode"></div>
+    <div class="card" style="background:var(--panel2);border:1px solid var(--trail-green);">
+      <p class="muted" style="text-align:center;margin:0;"><strong style="color:var(--trail-green);">💰 You set the price. You keep 100%.</strong><br>Riders pay you directly — BikeRidge never touches your money.</p>
+    </div>
+    <button class="btn btn-secondary" onclick="closeModal()">Done</button>
+  `;
+  document.getElementById('rentalModalBg').classList.add('show');
+  new QRCode(document.getElementById('qrcode'), {text: bike.code, width:180, height:180, colorDark:'#0A0F0D', colorLight:'#ffffff'});
+}
+
+/* ===================== UNLOCK FLOW ===================== */
+function attemptUnlock(){
+  const code = document.getElementById('unlockCode').value.trim().toUpperCase();
+  const box = document.getElementById('unlockResult');
+  if(!code){ toast('Enter a code.', 'err'); return; }
+  const bike = state.bikes.find(b=>b.code===code);
+  box.style.display = 'block';
+  if(!bike){
+    box.innerHTML = `<div class="row"><strong>Not found</strong></div><p class="muted">No bike matches "${code}". Check the code on the tag and try again — if it's damaged or unreadable, file a report from Security.</p>`;
+    toast('Bike code not found.', 'err');
+    return;
+  }
+  box.innerHTML = `<h3 style="margin-top:0;">${vehicleIcon(bike.type)} ${esc(bike.name)}</h3><p class="muted">${esc(bike.code)} · ${fmt(bike.price)}/ride · <span class="badge ${bike.status}">${bike.status.replace('_',' ')}</span>
+  <button class="btn btn-secondary btn-small" style="width:auto;display:inline-block;padding:4px 10px;margin:4px 0 0;font-size:11px;" onclick="copyToClipboard('${esc(bike.code)}','Bike code')">📋 Copy code</button></p>
+  <button class="btn btn-primary" onclick="openRentalModal('${bike.code}')">Continue</button>`;
+}
+
+/* ===================== RENTAL MODAL (rent / photo audit / geofence / end ride) ===================== */
+let activeRentalCode = null;
+function closeModal(){ document.getElementById('rentalModalBg').classList.remove('show'); Object.keys(photoCaptures).forEach(k=>delete photoCaptures[k]); clearInterval(_chatPollTimer); activeChatId = null; }
+
+function openRentalModal(code){
+  releaseStaleReservations();
+  const bike = state.bikes.find(b=>b.code===code);
+  if(!bike) return;
+  activeRentalCode = code;
+
+  if(bike.status === 'available'){
+    renderRentStep(bike);
+  } else if(bike.status === 'reserved'){
+    if(bike.reservedBy === currentUser()){
+      renderPhotoAuditStep(bike);
+    }else{
+      renderModalMsg('Already reserved', `${esc(bike.name)} was just reserved by another rider. Pick a different bike — the map will refresh in a few seconds.`, 'err');
+    }
+  } else if(bike.status === 'in_use'){
+    if(bike.rider === currentUser()){
+      renderEndRideStep(bike);
+    }else{
+      renderModalMsg('Bike in use', `${esc(bike.name)} is currently on a ride with someone else.`, '');
+    }
+  }
+  document.getElementById('rentalModalBg').classList.add('show');
+}
+
+function renderModalMsg(title, body, type){
+  document.getElementById('rentalModalBody').innerHTML = `<h3 style="margin-top:0;">${title}</h3><p class="muted">${body}</p><button class="btn btn-secondary" onclick="closeModal()">Close</button>`;
+}
+
+function renderRentStep(bike){
+  const gallery = [bike.listingPhoto, ...(bike.extraPhotos||[])].filter(Boolean);
+  const galleryHtml = gallery.length ? `
+    <div style="display:flex;gap:6px;overflow-x:auto;margin:8px 0;">
+      ${gallery.map(p=>`<img src="data:image/jpeg;base64,${p}" style="width:110px;height:80px;object-fit:cover;border-radius:8px;flex-shrink:0;">`).join('')}
+    </div>` : '';
+  document.getElementById('rentalModalBody').innerHTML = `
+    <h3 style="margin-top:0;">${vehicleIcon(bike.type)} ${esc(bike.name)}</h3>
+    ${galleryHtml}
+    <p class="muted">${esc(bike.code)} · owner ${esc(bike.owner)} · ${fmt(bike.price)}/hour</p>
+    <div class="card tight">
+      <label style="margin-top:0;">Hours</label>
+      <input id="rentHours" type="number" min="1" value="1" onchange="updateHourTotal('${bike.code}')" oninput="updateHourTotal('${bike.code}')">
+      <div class="row" style="margin-top:10px;"><span class="muted">Total to pay owner</span><strong id="hourTotal">${fmt(bike.price)}</strong></div>
+    </div>
+    <div class="card tight">
+      <h3 style="margin-top:0;font-size:13px;">How to pay ${esc(bike.owner)}</h3>
+      <p class="muted">${linkifyPaymentInstructions(bike.paymentInstructions)}</p>
+    </div>
+    <button class="btn btn-secondary btn-small" onclick="openChat('${bike.code}')">💬 Message ${esc(bike.owner)}</button>
+    <button class="btn btn-blue" style="margin-top:8px;" onclick="requestRental('${bike.code}')">I've sent payment</button>
+    <p class="muted" style="margin-top:8px;">This locks the bike for ${esc(bike.owner)} to check and confirm — real money changes hands directly between you two, this app doesn't touch it. Chats are monitored by BikeRidge.</p>
+  `;
+}
+
+function updateHourTotal(code){
+  const hrs = Math.max(1, parseInt(document.getElementById('rentHours').value)||1);
+  const bike = state.bikes.find(b=>b.code===code);
+  const price = bike ? bike.price : 2;
+  document.getElementById('hourTotal').textContent = fmt(hrs*price);
+}
+
+// Anti-theft: block renting for anyone with 2+ open "not returned / stolen"
+// reports filed against them. Doesn't stop a first-time bad actor, but stops
+// repeat offenders from just grabbing another bike right after.
+function isRenterBlocked(){
+  const name = currentUser();
+  const strikes = (state.reports||[]).filter(r =>
+    r.status === 'Open' &&
+    r.type === 'Stolen/Missing Bike' &&
+    r.accusedRider === name
+  ).length;
+  return strikes >= 2;
+}
+
+async function requestRental(code){
+  state = await loadState();
+  const bike = state.bikes.find(b=>b.code===code);
+  if(!bike || bike.status !== 'available'){
+    toast('Someone just grabbed this bike.', 'err');
+    closeModal(); renderAll();
+    return;
+  }
+  if(isRenterBlocked()){
+    toast('Your account is on hold due to multiple unresolved reports — contact BikeRidge support.', 'err');
+    closeModal();
+    return;
+  }
+  const hrs = Math.max(1, parseInt(document.getElementById('rentHours').value)||1);
+  const session = getSession();
+
+  bike.status = 'reserved';
+  bike.reservedAt = Date.now();
+  bike.reservedBy = currentUser();
+  bike.reservedByEmail = session ? session.email : '';
+  bike.pendingHours = hrs;
+  bike.pendingTotal = hrs * bike.price;
+  bike.paymentConfirmed = false;
+  saveState();
+  renderAll();
+  renderPaymentConfirmStep(bike);
+}
+
+function renderPaymentConfirmStep(bike){
+  document.getElementById('rentalModalBody').innerHTML = `
+    <h3 style="margin-top:0;">Waiting on ${esc(bike.owner)}</h3>
+    <p class="muted">You marked ${fmt(bike.pendingTotal)} as sent for ${bike.pendingHours} hour${bike.pendingHours>1?'s':''}. This unlocks automatically the moment ${esc(bike.owner)} taps "Received" in their dashboard — no need to do anything else here.</p>
+    <button class="btn btn-secondary" onclick="cancelPendingRental('${bike.code}')">Cancel</button>
+  `;
+  startPaymentPoll(bike.code);
+}
+
+let _paymentPollTimer = null;
+function startPaymentPoll(code){
+  clearInterval(_paymentPollTimer);
+  _paymentPollTimer = setInterval(async ()=>{
+    const fresh = await loadState();
+    const bike = fresh.bikes.find(b=>b.code===code);
+    if(!bike){ clearInterval(_paymentPollTimer); return; }
+    if(bike.paymentConfirmed){
+      clearInterval(_paymentPollTimer);
+      state = fresh;
+      toast(`${esc(bike.owner)} confirmed your payment.`, 'ok');
+      renderPhotoAuditStep(bike);
+    }
+  }, 3000);
+}
+
+function cancelPendingRental(code){
+  if(!confirm('Cancel this reservation? The bike will become available for anyone else to book.')) return;
+  clearInterval(_paymentPollTimer);
+  const bike = state.bikes.find(b=>b.code===code);
+  if(bike && bike.status==='reserved'){
+    bike.status = 'available';
+    delete bike.reservedAt; delete bike.reservedBy; delete bike.reservedByEmail; delete bike.pendingHours; delete bike.pendingTotal; delete bike.paymentConfirmed;
+    saveState(); renderAll();
+    toast('Reservation cancelled.', '');
+  }
+  closeModal();
+}
+
+/* ===================== SELLER FEE TIERS (Etsy-style, fully manual) ===================== */
+const ADMIN_EMAIL = 'bikeridgeapp@gmail.com'; // unlocks the Admin tab for this login
+const FREE_LAUNCH_SELLER_LIMIT = 5; // first N sellers skip payment entirely
+
+const PAY2_LINK = 'https://bikeridgeapp.bigcartel.com/product/2-bikeridge-payment';
+const PAY5_LINK = 'https://bikeridgeapp.bigcartel.com/product/5-bikeridge-payment';
+
+function adminPaymentInstructions(){
+  return localStorage.getItem('bikeridge_admin_pay_instructions') ||
+    `Pay $2 for 1 listing, or $5 once for unlimited listings — tap a button below to pay, then request approval.`;
+}
+function setAdminPaymentInstructions(text){
+  localStorage.setItem('bikeridge_admin_pay_instructions', text);
+}
+
+function isAdmin(){
+  const session = getSession();
+  return !!(ADMIN_EMAIL && session && session.email === ADMIN_EMAIL);
+}
+
+// Can this person create a new listing right now? Admin and anyone on the
+// unlimited ($5) plan always can; everyone else needs a per-listing credit.
+function canCreateListing(owner){
+  if(isAdmin()) return true;
+  if(!owner) return false;
+  return !!owner.unlimitedListings || (owner.listingCredits||0) > 0;
+}
+
+function approvedSellerCount(){
+  return (state.sellerRequests||[]).filter(r=>r.status==='approved').length;
+}
+
+function renderSellerStatusCard(){
+  const card = document.getElementById('sellerStatusCard');
+  const formCard = document.getElementById('listingFormCard');
+  if(!card) return;
+
+  const session = getSession();
+  const owner = session ? (state.users||[]).find(u=>u.email===session.email) : null;
+
+  if(isAdmin()){
+    card.innerHTML = `<h3 style="margin-top:0;">✅ Admin — unlimited listings</h3>`;
+    formCard.style.display = 'block';
+    return;
+  }
+
+  if(owner && owner.unlimitedListings){
+    card.innerHTML = `<h3 style="margin-top:0;">✅ Unlimited listings unlocked</h3><p class="muted">List as many rides as you want, any time.</p>`;
+    formCard.style.display = 'block';
+    return;
+  }
+
+  const credits = owner ? (owner.listingCredits||0) : 0;
+  if(credits > 0){
+    card.innerHTML = `<h3 style="margin-top:0;">✅ ${credits} listing credit${credits>1?'s':''} available</h3><p class="muted">Fill out the form below to use one.</p>`;
+    formCard.style.display = 'block';
+    return;
+  }
+
+  formCard.style.display = 'none';
+
+  const pending = (state.sellerRequests||[]).find(r=>owner && r.email===owner.email && r.status==='pending');
+  if(pending){
+    card.innerHTML = `
+      <h3 style="margin-top:0;">⏳ Waiting on approval</h3>
+      <p class="muted">You requested the ${pending.plan==='limited5' ? '$5 (unlimited listings)' : pending.plan==='free_launch' ? 'free launch promo' : '$2 (1 listing)'} plan. Once the admin confirms, it unlocks here automatically.</p>
+    `;
+    return;
+  }
+
+  const freeSlotsLeft = FREE_LAUNCH_SELLER_LIMIT - approvedSellerCount();
+
+  card.innerHTML = `
+    <h3 style="margin-top:0;">Become a seller</h3>
+    ${freeSlotsLeft > 0 ? `
+      <p class="muted" style="color:var(--trail-green);"><strong>🎉 Launch promo: ${freeSlotsLeft} free seller spot${freeSlotsLeft>1?'s':''} left</strong> — no payment needed, first come first served. Once these are gone, this offer is gone for good.</p>
+      <button class="btn btn-primary btn-small" style="margin-top:6px;" onclick="requestSellerPlan('free_launch')">Claim free spot</button>
+      <p class="muted" style="margin-top:12px;">Missed the free spots? Paid plans below:</p>
+    ` : `<p class="muted">The free launch promo has ended. Pay for a plan below, then request approval.</p>`}
+
+    <div class="card tight" style="margin-top:10px;">
+      <div style="font-weight:700;font-size:13.5px;">$2 — 1 listing</div>
+      <div class="row" style="gap:8px;margin-top:8px;">
+        <button class="btn btn-secondary btn-small" style="margin:0;flex:1;" onclick="openLinkPreview('${PAY2_LINK}')">Pay $2</button>
+        <button class="btn btn-primary btn-small" style="margin:0;flex:1;" onclick="requestSellerPlan('per_listing')">I've paid — request approval</button>
+      </div>
+    </div>
+    <div class="card tight" style="margin-top:8px;">
+      <div style="font-weight:700;font-size:13.5px;">$5 once — unlimited listings, forever</div>
+      <div class="row" style="gap:8px;margin-top:8px;">
+        <button class="btn btn-secondary btn-small" style="margin:0;flex:1;" onclick="openLinkPreview('${PAY5_LINK}')">Pay $5</button>
+        <button class="btn btn-primary btn-small" style="margin:0;flex:1;" onclick="requestSellerPlan('limited5')">I've paid — request approval</button>
+      </div>
+    </div>
+    <p class="muted" style="margin-top:10px;font-size:11px;">Tapping "Pay" opens the real BikeRidge store in a preview right here — no redirect, so there's nothing for a scammer to swap. Once you've paid, tap "I've paid" to notify the admin.</p>
+  `;
+}
+
+async function requestSellerPlan(plan){
+  const session = getSession();
+  if(!session){ toast('Log in first.', 'err'); return; }
+
+  if(plan === 'free_launch'){
+    // re-check against the freshest state so two people claiming the last
+    // free spot at the same moment don't both get through
+    state = await loadState();
+    const freeSlotsLeft = FREE_LAUNCH_SELLER_LIMIT - approvedSellerCount();
+    if(freeSlotsLeft <= 0){
+      toast('All free spots are taken — the launch promo has ended. Pick a paid plan instead.', 'err');
+      renderSellerStatusCard();
+      return;
+    }
+    state.sellerRequests = state.sellerRequests || [];
+    state.sellerRequests.push({ email: session.email, name: currentUser(), plan, status: 'approved', ts: Date.now() });
+    state.users = state.users || [];
+    let user = state.users.find(u=>u.email===session.email);
+    const grant = 1; // free promo grants 1 listing credit, same as the $2 plan
+    if(user){ user.listingCredits = (user.listingCredits||0) + grant; }
+    else { state.users.push({ email: session.email, name: currentUser(), listingCredits: grant }); }
+    saveState();
+    renderSellerStatusCard();
+    toast(`Free spot claimed — you have ${grant} listing credit.`, 'ok');
+    return;
+  }
+
+  state.sellerRequests = state.sellerRequests || [];
+  state.sellerRequests.push({ email: session.email, name: currentUser(), plan, status: 'pending', ts: Date.now() });
+  saveState();
+  renderSellerStatusCard();
+  toast('Request sent — waiting on admin to confirm your payment.', 'ok');
+}
+
+/* ===================== ADMIN DASHBOARD (approve seller fee payments) ===================== */
+function renderAdminScreen(){
+  const wrap = document.getElementById('adminContent');
+  if(!wrap) return;
+
+  if(!isAdmin()){
+    wrap.innerHTML = `<p class="muted">Not authorized.</p>`;
+    return;
+  }
+
+  const pending = (state.sellerRequests||[]).filter(r=>r.status==='pending');
+  const rows = pending.map(r=>`
+    <div class="card tight row">
+      <div>
+        <div style="font-weight:700;font-size:13.5px;">${esc(r.name)}</div>
+        <div class="muted">${esc(r.email)} · ${r.plan==='limited5' ? '$5 — unlimited listings' : '$2 — 1 listing'}</div>
+      </div>
+      <button class="btn btn-primary btn-small" onclick="approveSellerRequest('${r.email}', ${r.ts})">Received</button>
+    </div>
+  `).join('');
+
+  const chatEntries = Object.entries(state.chats||{});
+  const chatRows = chatEntries.map(([id, t])=>{
+    const [bikeCode] = id.split('__');
+    const bike = state.bikes.find(b=>b.code===bikeCode);
+    const last = t.messages[t.messages.length-1];
+    return `<div class="card tight row" style="cursor:pointer;" onclick="adminViewChat('${esc(id)}')">
+      <div>
+        <div style="font-weight:700;font-size:13px;">${esc(bike ? bike.name : bikeCode)}</div>
+        <div class="muted" style="font-size:11.5px;">${t.messages.length} message${t.messages.length!==1?'s':''} · last: ${last ? esc(last.text).slice(0,30) : ''}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  const freeUsed = approvedSellerCount();
+  const freeLeft = Math.max(0, FREE_LAUNCH_SELLER_LIMIT - freeUsed);
+
+  const flaggedReviews = (state.reviews||[]).filter(r=>r.flagged && !r.flagResolved);
+  const flaggedRows = flaggedReviews.map((r,i)=>`
+    <div class="card tight">
+      <div style="font-weight:700;font-size:13px;">${esc(r.bikeName)} — ${'★'.repeat(r.rating)}${'☆'.repeat(5-r.rating)}</div>
+      <div class="muted" style="font-size:12px;margin:4px 0;">"${esc(r.comment||'(no comment)')}" — by ${esc(r.reviewer)}</div>
+      <div class="muted" style="font-size:11px;">Flagged: ${esc(r.flagReason||'no reason given')}</div>
+      <div class="row" style="gap:8px;margin-top:8px;">
+        <button class="btn btn-secondary btn-small" style="margin:0;" onclick="resolveReviewFlag(${r.ts}, false)">Dismiss flag</button>
+        <button class="btn btn-primary btn-small" style="margin:0;background:var(--sos-red);" onclick="resolveReviewFlag(${r.ts}, true)">Remove review</button>
+      </div>
+    </div>
+  `).join('');
+
+  const bannedUsers = (state.users||[]).filter(u=>u.banned);
+  const bannedRows = bannedUsers.map(u=>`
+    <div class="card tight row">
+      <div><div style="font-weight:700;font-size:13px;">${esc(u.name)}</div><div class="muted" style="font-size:11.5px;">${esc(u.email)}</div></div>
+      <button class="btn btn-secondary btn-small" style="margin:0;" onclick="unbanUser('${esc(u.email)}')">Unban</button>
+    </div>
+  `).join('');
+
+  const a = computeAnalytics();
+
+  wrap.innerHTML = `
+    <div class="card">
+      <h3 style="margin-top:0;">📊 Quick stats</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div><div style="font-size:22px;font-weight:800;">${a.totalUsers}</div><div class="muted" style="font-size:11px;">Total users</div></div>
+        <div><div style="font-size:22px;font-weight:800;">${a.signupsToday}</div><div class="muted" style="font-size:11px;">Signups today</div></div>
+        <div><div style="font-size:22px;font-weight:800;">${a.totalRides}</div><div class="muted" style="font-size:11px;">Rides completed</div></div>
+        <div><div style="font-size:22px;font-weight:800;">${a.ridesToday}</div><div class="muted" style="font-size:11px;">Rides today</div></div>
+        <div><div style="font-size:22px;font-weight:800;">${a.activeListings}</div><div class="muted" style="font-size:11px;">Active listings</div></div>
+        <div><div style="font-size:22px;font-weight:800;">${a.openReports}</div><div class="muted" style="font-size:11px;">Open reports</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0;">🎉 Launch promo</h3>
+      <p class="muted">${freeUsed} used · ${freeLeft} of ${FREE_LAUNCH_SELLER_LIMIT} free spots left.</p>
+      <button class="btn btn-secondary btn-small" onclick="resetLaunchPromo()">Reset free spots back to ${FREE_LAUNCH_SELLER_LIMIT}</button>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0;">Your payment instructions</h3>
+      <p class="muted">Shown to every seller before they request approval.</p>
+      <input id="adminPayInput" value="${esc(adminPaymentInstructions())}">
+      <button class="btn btn-secondary btn-small" style="margin-top:8px;" onclick="saveAdminPayInstructions()">Save</button>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0;">Pending seller payments</h3>
+      ${rows || '<p class="muted">Nothing pending.</p>'}
+    </div>
+    ${flaggedReviews.length ? `<div class="card"><h3 style="margin-top:0;">🚩 Flagged reviews</h3>${flaggedRows}</div>` : ''}
+    <div class="card">
+      <h3 style="margin-top:0;">Manage users</h3>
+      <input id="banEmailInput" placeholder="user@email.com">
+      <button class="btn btn-secondary btn-small" style="margin-top:8px;" onclick="banUserPrompt()">Ban this email</button>
+      ${bannedRows ? `<p class="muted" style="margin-top:12px;">Currently banned:</p>${bannedRows}` : ''}
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0;">All conversations (monitored)</h3>
+      ${chatRows || '<p class="muted">No conversations yet.</p>'}
+    </div>
+  `;
+}
+
+function resetLaunchPromo(){
+  if(!confirm(`Reset the launch promo? This clears all "free spot claimed" records so the first ${FREE_LAUNCH_SELLER_LIMIT} new signups get free listings again. Existing listing credits people already have are not affected.`)) return;
+  state.sellerRequests = (state.sellerRequests||[]).filter(r=>r.plan !== 'free_launch');
+  saveState();
+  renderAdminScreen();
+  toast(`Launch promo reset — ${FREE_LAUNCH_SELLER_LIMIT} free spots available again.`, 'ok');
+}
+
+function computeAnalytics(){
+  const users = state.users || [];
+  const bikes = state.bikes || [];
+  const ledger = state.ledger || [];
+  const reports = state.reports || [];
+  const dayMs = 24*60*60*1000;
+  const now = Date.now();
+  const signupsToday = users.filter(u=>u.createdAt && now - u.createdAt < dayMs).length;
+  const ridesToday = ledger.filter(l=>l.ts && now - l.ts < dayMs).length;
+  return {
+    totalUsers: users.length,
+    signupsToday,
+    totalRides: ledger.length,
+    ridesToday,
+    activeListings: bikes.length,
+    openReports: reports.filter(r=>r.status==='Open').length
+  };
+}
+
+function banUserPrompt(){
+  const email = document.getElementById('banEmailInput').value.trim().toLowerCase();
+  if(!email){ toast('Enter an email.', 'err'); return; }
+  const user = (state.users||[]).find(u=>u.email===email);
+  if(!user){ toast('No account with that email.', 'err'); return; }
+  if(!confirm(`Ban ${user.name} (${email})? This blocks them from logging in until unbanned.`)) return;
+  user.banned = true;
+  saveState();
+  renderAdminScreen();
+  toast('User banned.', 'ok');
+}
+function unbanUser(email){
+  const user = (state.users||[]).find(u=>u.email===email);
+  if(user) delete user.banned;
+  saveState();
+  renderAdminScreen();
+  toast('User unbanned.', 'ok');
+}
+
+function resolveReviewFlag(ts, remove){
+  const review = (state.reviews||[]).find(r=>r.ts===ts);
+  if(!review) return;
+  if(remove){
+    state.reviews = state.reviews.filter(r=>r.ts!==ts);
+  } else {
+    review.flagResolved = true;
+  }
+  saveState();
+  renderAdminScreen();
+  toast(remove ? 'Review removed.' : 'Flag dismissed.', 'ok');
+}
+
+function adminViewChat(chatId){
+  const [bikeCode] = chatId.split('__');
+  activeChatId = chatId;
+  const bike = state.bikes.find(b=>b.code===bikeCode) || {name: bikeCode};
+  document.getElementById('rentalModalBody').innerHTML = `
+    <h3 style="margin-top:0;">${vehicleIcon(bike.type)} ${esc(bike.name)} — full thread</h3>
+    <p class="muted" style="font-size:11.5px;">Admin view — read only.</p>
+    <div id="chatMessages" style="max-height:320px;overflow-y:auto;margin:10px 0;display:flex;flex-direction:column;gap:8px;"></div>
+    <button class="btn btn-secondary" onclick="closeChat()">Close</button>
+  `;
+  document.getElementById('rentalModalBg').classList.add('show');
+  renderChatMessages();
+}
+
+function saveAdminPayInstructions(){
+  setAdminPaymentInstructions(document.getElementById('adminPayInput').value.trim());
+  toast('Saved.', 'ok');
+}
+
+async function approveSellerRequest(email, ts){
+  state = await loadState();
+  const req = (state.sellerRequests||[]).find(r=>r.email===email && r.ts===ts);
+  if(!req) return;
+  req.status = 'approved';
+
+  state.users = state.users || [];
+  let user = state.users.find(u=>u.email===email);
+  if(req.plan === 'limited5'){
+    if(user){ user.unlimitedListings = true; }
+    else { state.users.push({ email, name: req.name, listingCredits: 0, unlimitedListings: true }); }
+  } else {
+    if(user){ user.listingCredits = (user.listingCredits||0) + 1; }
+    else { state.users.push({ email, name: req.name, listingCredits: 1 }); }
+  }
+  saveState();
+  renderAdminScreen();
+  toast('Approved.', 'ok');
+}
+
+/* ===================== OWNER CONFIRMS RENTAL PAYMENT ===================== */
+function renderPendingRentalPayments(){
+  const session = getSession();
+  const mine = session ? state.bikes.filter(b=>b.ownerEmail===session.email && b.status==='reserved' && !b.paymentConfirmed && b.pendingTotal) : [];
+  const wrap = document.getElementById('pendingRentalsList');
+  if(!wrap) return;
+  if(mine.length===0){ wrap.innerHTML = '<p class="muted">No rentals waiting on you right now.</p>'; return; }
+  wrap.innerHTML = mine.map(b=>{
+    const rider = (state.users||[]).find(u=>u.email===b.reservedByEmail);
+    const noShows = rider ? (rider.noShowCount||0) : 0;
+    return `
+    <div class="card tight row">
+      <div>
+        <div style="font-weight:700;font-size:13.5px;">${esc(b.name)} — ${esc(b.reservedBy)}</div>
+        <div class="muted">${fmt(b.pendingTotal)} for ${b.pendingHours}h</div>
+        ${noShows > 0 ? `<div style="color:var(--sos-red);font-size:11px;font-weight:700;margin-top:2px;">⚠️ ${noShows} previous no-show${noShows>1?'s':''} on this account</div>` : ''}
+      </div>
+      <button class="btn btn-primary btn-small" onclick="confirmRentalReceived('${b.code}')">Received</button>
+    </div>
+  `;
+  }).join('');
+}
+
+async function confirmRentalReceived(code){
+  state = await loadState();
+  const bike = state.bikes.find(b=>b.code===code);
+  if(!bike) return;
+  bike.paymentConfirmed = true;
+  saveState();
+  renderPendingRentalPayments();
+  toast('Marked as received — rider can now continue.', 'ok');
+}
+
+function haversineMeters(a, b){
+  const R = 6371000;
+  const toRad = d => d * Math.PI / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const h = Math.sin(dLat/2)**2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+const RETURN_RADIUS_METERS = 150; // how close to the bike's actual pickup spot you must be to unlock/end a ride
+
+function renderPhotoAuditStep(bike){
+  document.getElementById('rentalModalBody').innerHTML = `
+    <h3 style="margin-top:0;">Pre-ride photo audit</h3>
+    <p class="muted">Required before unlock — protects both of you if there's a damage dispute later. These are real camera photos with your real GPS location attached.</p>
+    <label class="photo-slot" id="slotWide" for="fileWide">
+      <div class="icon">🚲</div><div style="font-size:12.5px;margin-top:4px;">Wide shot — full bike profile</div>
+    </label>
+    <input type="file" id="fileWide" accept="image/*" capture="environment" style="display:none;" onchange="capturePhoto('wide', this)">
+    <label class="photo-slot" id="slotDamage" for="fileDamage">
+      <div class="icon">🔍</div><div style="font-size:12.5px;margin-top:4px;">Close-up — existing damage</div>
+    </label>
+    <input type="file" id="fileDamage" accept="image/*" capture="environment" style="display:none;" onchange="capturePhoto('damage', this)">
+    <button class="btn btn-primary" id="unlockBtn" disabled onclick="startRide('${bike.code}')">Unlock bike</button>
+  `;
+}
+
+const photoCaptures = {}; // holds the real File objects + real metadata for this rental
+
+function capturePhoto(which, inputEl){
+  const file = inputEl.files && inputEl.files[0];
+  if(!file){ return; }
+
+  // Real validation: reject anything that isn't actually a decodable image.
+  // A renamed .txt with a .jpg extension will fail to load into an Image
+  // element even if its MIME type claims to be image/jpeg, so this catches
+  // spoofed file types, not just the extension.
+  if(!file.type.startsWith('image/')){
+    toast('That file isn\'t an image — pick a real photo.', 'err');
+    inputEl.value = '';
+    return;
+  }
+  if(file.size === 0){
+    toast('That file is empty.', 'err');
+    inputEl.value = '';
+    return;
+  }
+  if(file.size > 20 * 1024 * 1024){
+    toast('Photo is too large (max 20MB).', 'err');
+    inputEl.value = '';
+    return;
+  }
+
+  const objectUrl = URL.createObjectURL(file);
+  const testImg = new Image();
+  testImg.onload = ()=>{
+    URL.revokeObjectURL(objectUrl);
+    proceedWithCapture(which, file, inputEl);
+  };
+  testImg.onerror = ()=>{
+    URL.revokeObjectURL(objectUrl);
+    toast('That file couldn\'t be read as an image — try a different photo.', 'err');
+    inputEl.value = '';
+  };
+  testImg.src = objectUrl;
+}
+
+// SHA-256 of the raw file bytes — used to catch someone reusing the exact
+// same photo file across multiple rides instead of taking a real one.
+async function hashFile(file){
+  const buf = await file.arrayBuffer();
+  const digest = await crypto.subtle.digest('SHA-256', buf);
+  return Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+function fileToBase64(file){
+  return new Promise((resolve, reject)=>{
+    const r = new FileReader();
+    r.onload = ()=> resolve(r.result.split(',')[1]);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+
+const SLOT_ID_MAP = { wide: 'slotWide', damage: 'slotDamage', return: 'slotReturn' };
+async function proceedWithCapture(which, file, inputEl){
+  const slot = document.getElementById(SLOT_ID_MAP[which]);
+  slot.querySelector('div:last-child').textContent = 'Checking photo…';
+
+  // 1) reused-photo guard — same exact file used before anywhere in the app
+  const hash = await hashFile(file);
+  state.usedPhotoHashes = state.usedPhotoHashes || [];
+  if(state.usedPhotoHashes.includes(hash)){
+    toast('This exact photo has already been used on a previous ride — take a fresh one.', 'err');
+    slot.querySelector('div:last-child').textContent = 'Needs a fresh photo';
+    inputEl.value = '';
+    return;
+  }
+
+  // 2) real AI content check — confirms it's actually a bike/scooter/skates/
+  // etc (not just "a valid image file"), and if the listing has a reference
+  // photo, also confirms it's the SAME physical item (angle can differ).
+  // Silently skips if GEMINI_API_KEY isn't configured on the server, so the
+  // app still works without it — just falls back to the checks above.
+  slot.querySelector('div:last-child').textContent = 'Verifying the item…';
+  try{
+    const b64 = await fileToBase64(file);
+    const bike = state.bikes.find(b=>b.code===activeRentalCode);
+    const payload = { imageBase64: b64, mediaType: file.type };
+    if(bike && bike.listingPhoto && which !== 'return'){
+      payload.referenceImageBase64 = bike.listingPhoto;
+      payload.referenceMediaType = 'image/jpeg';
+    }
+    const vr = await fetch('/api/verify-photo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const vdata = await vr.json();
+    if(vr.ok && vdata.skipped !== true){
+      if(vdata.isValidVehicle === false){
+        toast('That doesn\'t look like a real ride photo — please retake it.', 'err');
+        slot.querySelector('div:last-child').textContent = 'Needs a real photo';
+        inputEl.value = '';
+        return;
+      }
+      if(vdata.matchesListing === false){
+        toast('This doesn\'t look like the same item shown in the listing photo — retake or report an issue.', 'err');
+        slot.querySelector('div:last-child').textContent = 'Doesn\'t match the listing';
+        inputEl.value = '';
+        return;
+      }
+    }
+  }catch(err){
+    // network hiccup on the vision check shouldn't block a real rider — fall through
+  }
+
+  slot.querySelector('div:last-child').textContent = 'Getting your location…';
+  if(!navigator.geolocation){
+    finalizeCapture(which, file, null, slot, hash);
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(
+    (pos)=> finalizeCapture(which, file, {lat: pos.coords.latitude, lng: pos.coords.longitude}, slot, hash),
+    ()=> finalizeCapture(which, file, null, slot, hash), // still keep the real photo even if location is denied
+    { enableHighAccuracy: true, timeout: 8000 }
+  );
+}
+
+function finalizeCapture(which, file, coords, slot, hash){
+  photoCaptures[which] = {
+    fileName: file.name,
+    fileSizeKB: Math.round(file.size/1024),
+    ts: Date.now(),
+    bikeCode: activeRentalCode,
+    coords, // null if the rider denied location — shown honestly below, not faked
+    hash
+  };
+  state.usedPhotoHashes = state.usedPhotoHashes || [];
+  state.usedPhotoHashes.push(hash);
+  if(state.usedPhotoHashes.length > 500) state.usedPhotoHashes = state.usedPhotoHashes.slice(-500);
+  saveState();
+
+  slot.classList.add('done');
+  slot.querySelector('div:last-child').textContent = coords
+    ? `Captured ✓ (${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)})`
+    : `Captured ✓ (location unavailable)`;
+
+  if(photoCaptures.wide && photoCaptures.damage){
+    const btn = document.getElementById('unlockBtn');
+    if(btn) btn.disabled = false;
+  }
+  if(photoCaptures.return){
+    const btn = document.getElementById('endRideBtn');
+    if(btn) btn.disabled = false;
+  }
+  toast('Photo saved.', 'ok');
+}
+
+function startRide(code){
+  const bike = state.bikes.find(b=>b.code===code);
+  const unlockBtn = document.getElementById('unlockBtn');
+  if(unlockBtn){ unlockBtn.disabled = true; unlockBtn.textContent = 'Checking you\'re at the bike…'; }
+
+  if(!navigator.geolocation){
+    toast('Location is required to unlock — this browser has no GPS support.', 'err');
+    if(unlockBtn){ unlockBtn.disabled = false; unlockBtn.textContent = 'Unlock bike'; }
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    (pos)=>{
+      const here = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      const distance = Math.round(haversineMeters(here, { lat: bike.lat, lng: bike.lng }));
+
+      if(distance > RETURN_RADIUS_METERS){
+        toast(`You're ${distance}m from this bike — get within ${RETURN_RADIUS_METERS}m to unlock it.`, 'err');
+        if(unlockBtn){ unlockBtn.disabled = false; unlockBtn.textContent = 'Unlock bike'; }
+        return;
+      }
+
+      bike.status = 'in_use';
+      bike.rider = currentUser();
+      bike.rideStartedAt = Date.now();
+      bike.unlockLocation = here;
+      delete bike.reservedAt;
+      saveState();
+      renderAll();
+      toast('Bike unlocked. Ride started.', 'ok');
+      renderEndRideStep(bike);
+    },
+    ()=>{
+      toast('Location permission is required to unlock a bike — this stops someone unlocking it remotely.', 'err');
+      if(unlockBtn){ unlockBtn.disabled = false; unlockBtn.textContent = 'Unlock bike'; }
+    },
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
+}
+
+function renderEndRideStep(bike){
+  document.getElementById('rentalModalBody').innerHTML = `
+    <h3 style="margin-top:0;">${vehicleIcon(bike.type)} ${esc(bike.name)} — ride in progress</h3>
+    <p class="muted">End your ride once you're back at ${esc(bike.name)}'s pickup spot. A return photo is required — this is what protects you if the owner ever claims the bike wasn't brought back.</p>
+    <label class="photo-slot" id="slotReturn" for="fileReturn">
+      <div class="icon">🔒</div><div style="font-size:12.5px;margin-top:4px;">Return photo — bike locked at pickup spot</div>
+    </label>
+    <input type="file" id="fileReturn" accept="image/*" capture="environment" style="display:none;" onchange="capturePhoto('return', this)">
+    <button class="btn btn-primary" id="endRideBtn" disabled onclick="attemptEndRide('${bike.code}')">End ride</button>
+    <div class="sos-panel" id="geoPanel"></div>
+  `;
+}
+
+function attemptEndRide(code){
+  const bike = state.bikes.find(b=>b.code===code);
+  const rideTotal = bike.pendingTotal || bike.price; // falls back to flat price if this bike predates the hourly model
+  const panel = document.getElementById('geoPanel');
+
+  if(!photoCaptures.return){
+    toast('Attach the return photo first.', 'err');
+    return;
+  }
+
+  if(!navigator.geolocation){
+    toast('This browser has no location support — can\'t verify the return zone.', 'err');
+    return;
+  }
+
+  panel.className = 'sos-panel show';
+  panel.textContent = 'Checking your location…';
+
+  navigator.geolocation.getCurrentPosition(
+    (pos)=>{
+      const here = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      const distance = Math.round(haversineMeters(here, { lat: bike.lat, lng: bike.lng }));
+      const inside = distance <= RETURN_RADIUS_METERS;
+
+      if(!inside){
+        panel.className = 'sos-panel show';
+        panel.textContent = `⚠ You're ${distance}m from ${bike.name.replace(/[<>]/g,'')}'s pickup spot (limit is ${RETURN_RADIUS_METERS}m). Return the bike there and tap End Ride again.`;
+        toast('Return to the bike\'s pickup spot to end your ride.', 'err');
+        return;
+      }
+
+      panel.className = 'sos-panel';
+      finishRide(bike, rideTotal);
+    },
+    (err)=>{
+      panel.className = 'sos-panel show';
+      panel.textContent = `⚠ Couldn't get your location (${err.message}). Location access is required to end a ride.`;
+      toast('Location permission needed to end ride.', 'err');
+    },
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
+}
+
+function finishRide(bike, rideTotal){
+  bike.status = 'available';
+  bike.earnings = +(bike.earnings + rideTotal).toFixed(2); // full amount — paid directly to the owner, no app cut per ride
+  bike.rides += 1;
+  bike.riderHistory.push({rider: currentUser(), amount: rideTotal, ts: Date.now()});
+  delete bike.rider; delete bike.rideStartedAt; delete bike.pendingHours; delete bike.pendingTotal; delete bike.paymentConfirmed;
+
+  // track rider spend on a lightweight ledger
+  state.ledger = state.ledger || [];
+  state.ledger.push({user: currentUser(), bikeCode: bike.code, bikeName: bike.name, role:'rider', amount: rideTotal, ts: Date.now()});
+
+  saveState();
+  renderAll();
+  toast(`Ride ended. You paid ${bike.owner.replace(/[<>]/g,'')} directly.`, 'ok');
+  setTimeout(()=> toast(`${bike.name.replace(/[<>]/g,'')}'s listing has been renewed — it's available again.`, ''), 2200);
+  renderReviewPromptStep(bike);
+}
+
+/* ===================== REVIEWS ===================== */
+let reviewRatingSelected = 0;
+
+function renderReviewPromptStep(bike){
+  reviewRatingSelected = 0;
+  const stars = [1,2,3,4,5].map(n=>`<span class="star-pick" data-n="${n}" onclick="pickStar(${n})" style="font-size:26px;cursor:pointer;color:var(--border);">★</span>`).join('');
+  document.getElementById('rentalModalBody').innerHTML = `
+    <h3 style="margin-top:0;">How was ${esc(bike.name)}?</h3>
+    <p class="muted">Leave a quick rating for ${esc(bike.owner)} — visible to everyone browsing bikes.</p>
+    <div id="starRow" style="margin:10px 0;">${stars}</div>
+    <input id="reviewComment" placeholder="Optional comment" maxlength="500" oninput="document.getElementById('reviewCharCount').textContent = this.value.length + '/500'">
+    <div class="muted" id="reviewCharCount" style="font-size:10.5px;text-align:right;margin-top:2px;">0/500</div>
+    <button class="btn btn-primary" onclick="submitReview('${bike.code}')">Post review</button>
+    <button class="btn btn-secondary btn-small" style="margin-top:8px;" onclick="closeModal()">Skip</button>
+  `;
+}
+
+function pickStar(n){
+  reviewRatingSelected = n;
+  document.querySelectorAll('#starRow .star-pick').forEach(el=>{
+    el.style.color = Number(el.dataset.n) <= n ? '#F59E0B' : 'var(--border)';
+  });
+}
+
+async function submitReview(bikeCode){
+  if(reviewRatingSelected === 0){ toast('Pick a star rating first.', 'err'); return; }
+  const comment = document.getElementById('reviewComment').value.trim().slice(0, 500);
+  const bike = state.bikes.find(b=>b.code===bikeCode);
+  const name = currentUser();
+
+  // Fraud guard: only someone with a real completed-ride ledger entry for
+  // this bike can post a review, and only once per completed ride — stops
+  // drive-by fake reviews (good or bad) from anyone who never actually rode.
+  state.ledger = state.ledger || [];
+  const unreviewedRide = (state.ledger||[]).find(l =>
+    l.user === name && l.bikeCode === bikeCode && !l.reviewed
+  );
+  if(!unreviewedRide){
+    toast('You can only review a bike after completing a ride on it.', 'err');
+    closeModal();
+    return;
+  }
+
+  state.reviews = state.reviews || [];
+  state.reviews.push({
+    bikeCode, bikeName: bike ? bike.name : bikeCode, owner: bike ? bike.owner : '',
+    rating: reviewRatingSelected, comment, reviewer: name, ts: Date.now()
+  });
+  unreviewedRide.reviewed = true;
+  saveState();
+  toast('Review posted.', 'ok');
+  closeModal();
+}
+
+function bikeAvgRating(code){
+  const rs = (state.reviews||[]).filter(r=>r.bikeCode===code);
+  if(rs.length===0) return null;
+  const avg = rs.reduce((s,r)=>s+r.rating,0) / rs.length;
+  return { avg: avg.toFixed(1), count: rs.length };
+}
+
+/* ===================== COMMUNITY (posts, groups, likes, comments) ===================== */
+let communityFilter = 'All';
+let pendingPostPhotoB64 = null;
+let communitySearchQuery = '';
+
+async function attachPostPhoto(inputEl){
+  const file = inputEl.files[0];
+  if(!file) return;
+  const slot = document.getElementById('slotPostPhoto');
+  slot.querySelector('div:last-child').textContent = 'Processing…';
+  try{
+    pendingPostPhotoB64 = await compressImageToBase64(file, 480);
+    slot.classList.add('done');
+    slot.querySelector('div:last-child').textContent = 'Photo attached ✓';
+  }catch(err){
+    toast('Could not read that photo.', 'err');
+    slot.querySelector('div:last-child').textContent = 'Add a photo (optional)';
+  }
+}
+
+function setCommunityFilter(group){
+  communityFilter = group;
+  document.querySelectorAll('#communityFilterRow .chip').forEach(c=>c.classList.toggle('active', c.dataset.group===group));
+  renderCommunityFeed();
+}
+
+let _postSubmitting = false;
+async function createPost(){
+  if(_postSubmitting) return; // prevents double-posts from a double-tap
+  const session = getSession();
+  if(!session){ toast('Log in first.', 'err'); return; }
+  const textEl = document.getElementById('newPostText');
+  const text = textEl.value.trim().slice(0, 500);
+  const group = document.getElementById('newPostGroup').value;
+  if(!text && !pendingPostPhotoB64){ toast('Write something or attach a photo.', 'err'); return; }
+
+  const btn = document.querySelector('#newPostCard button.btn-primary');
+  _postSubmitting = true;
+  if(btn){ btn.disabled = true; btn.textContent = 'Posting…'; }
+
+  try{
+    state = await loadState();
+    state.posts = state.posts || [];
+    state.posts.push({
+      id: 'post_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+      author: currentUser(),
+      authorEmail: session.email,
+      group, text,
+      photo: pendingPostPhotoB64,
+      likes: [],
+      comments: [],
+      ts: Date.now()
+    });
+    await saveStateNow();
+    textEl.value = '';
+    pendingPostPhotoB64 = null;
+    const slot = document.getElementById('slotPostPhoto');
+    if(slot){ slot.classList.remove('done'); slot.querySelector('div:last-child').textContent = 'Add a photo (optional)'; }
+    renderCommunityFeed();
+    toast('Posted.', 'ok');
+  } finally {
+    _postSubmitting = false;
+    if(btn){ btn.disabled = false; btn.textContent = 'Post'; }
+  }
+}
+
+function timeAgo(ts){
+  const s = Math.round((Date.now()-ts)/1000);
+  if(s < 60) return 'just now';
+  if(s < 3600) return Math.floor(s/60) + 'm ago';
+  if(s < 86400) return Math.floor(s/3600) + 'h ago';
+  return Math.floor(s/86400) + 'd ago';
+}
+
+function toggleLike(postId){
+  const session = getSession();
+  if(!session){ toast('Log in first.', 'err'); return; }
+  const post = (state.posts||[]).find(p=>p.id===postId);
+  if(!post) return;
+  post.likes = post.likes || [];
+  const idx = post.likes.indexOf(session.email);
+  if(idx >= 0) post.likes.splice(idx, 1);
+  else post.likes.push(session.email);
+  saveState();
+  renderCommunityFeed();
+}
+
+function addComment(postId){
+  const session = getSession();
+  if(!session){ toast('Log in first.', 'err'); return; }
+  const input = document.getElementById('commentInput_'+postId);
+  const text = input.value.trim().slice(0, 300);
+  if(!text) return;
+  const post = (state.posts||[]).find(p=>p.id===postId);
+  if(!post) return;
+  post.comments = post.comments || [];
+  post.comments.push({ author: currentUser(), text, ts: Date.now() });
+  saveState();
+  renderCommunityFeed();
+}
+
+function searchCommunity(val){
+  communitySearchQuery = val.trim().toLowerCase();
+  renderCommunityFeed();
+}
+
+function renderCommunityFeed(){
+  const wrap = document.getElementById('communityFeed');
+  if(!wrap) return;
+  let posts = (state.posts||[]).slice().reverse();
+  if(communityFilter !== 'All') posts = posts.filter(p=>p.group===communityFilter);
+  if(communitySearchQuery){
+    posts = posts.filter(p =>
+      (p.text||'').toLowerCase().includes(communitySearchQuery) ||
+      (p.author||'').toLowerCase().includes(communitySearchQuery) ||
+      (p.group||'').toLowerCase().includes(communitySearchQuery)
+    );
+  }
+
+  if(posts.length === 0){
+    wrap.innerHTML = `<div class="card" style="text-align:center;">
+      <div style="font-size:32px;">💬</div>
+      <p class="muted" style="margin:8px 0 12px;">${communitySearchQuery ? 'No posts match your search.' : 'No posts yet — be the first to say something.'}</p>
+    </div>`;
+    return;
+  }
+
+  const session = getSession();
+  const myEmail = session ? session.email : null;
+  const groupIcon = {'General':'💬','Promote':'📣','Buy/Sell':'🏷️','Help':'🆘','Meetups':'🗓️'};
+
+  wrap.innerHTML = posts.map(p=>{
+    const liked = myEmail && (p.likes||[]).includes(myEmail);
+    const comments = p.comments || [];
+    return `
+      <div class="card tight">
+        <div class="row">
+          <div style="font-weight:700;font-size:13.5px;">${esc(p.author)}</div>
+          <span class="muted" style="font-size:11px;">${groupIcon[p.group]||'💬'} ${esc(p.group)} · ${timeAgo(p.ts)}</span>
+        </div>
+        ${p.text ? `<div style="margin-top:6px;font-size:13.5px;white-space:pre-wrap;">${esc(p.text)}</div>` : ''}
+        ${p.photo ? `<img src="data:image/jpeg;base64,${p.photo}" style="width:100%;border-radius:10px;margin-top:8px;max-height:280px;object-fit:cover;">` : ''}
+        <div class="row" style="margin-top:10px;gap:14px;">
+          <button class="btn btn-secondary btn-small" style="width:auto;margin:0;padding:5px 12px;font-size:12px;${liked?'color:var(--sos-red);':''}" onclick="toggleLike('${p.id}')">${liked?'❤️':'🤍'} ${(p.likes||[]).length}</button>
+          <span class="muted" style="font-size:12px;">💬 ${comments.length}</span>
+        </div>
+        ${comments.length ? `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px;">
+          ${comments.map(c=>`<div style="font-size:12px;"><strong>${esc(c.author)}</strong> ${esc(c.text)}</div>`).join('')}
+        </div>` : ''}
+        <div class="row" style="margin-top:8px;gap:6px;">
+          <input id="commentInput_${p.id}" placeholder="Add a comment…" style="flex:1;padding:8px 10px;font-size:12.5px;" onkeydown="if(event.key==='Enter'){addComment('${p.id}');}">
+          <button class="btn btn-secondary btn-small" style="width:auto;margin:0;padding:8px 12px;" onclick="addComment('${p.id}')">Send</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderReviewsFeed(){
+  const wrap = document.getElementById('reviewsFeed');
+  const all = (state.reviews||[]).filter(r=>!r.flagged || !r.flagResolved || true).slice().reverse();
+  const visible = all.filter(r=>!(r.flagged && r.flagResolved && r.removed));
+  if(visible.length === 0){
+    wrap.innerHTML = `<div class="card" style="text-align:center;">
+      <div style="font-size:32px;">⭐</div>
+      <p class="muted" style="margin:8px 0 12px;">No reviews yet — be the first to rate a ride.</p>
+      <button class="btn btn-secondary" onclick="switchScreen('map')">Find a ride</button>
+    </div>`;
+    return;
+  }
+  wrap.innerHTML = visible.map(r=>{
+    const stars = '★'.repeat(r.rating) + '☆'.repeat(5-r.rating);
+    const when = new Date(r.ts).toLocaleDateString();
+    return `
+      <div class="card tight">
+        <div class="row">
+          <div style="font-weight:700;font-size:13.5px;">${esc(r.reviewer)}</div>
+          <span class="muted" style="font-size:11px;">${when}</span>
+        </div>
+        <div style="color:var(--amber);letter-spacing:2px;margin:4px 0;">${stars}</div>
+        <div class="muted" style="font-size:12.5px;">on <strong>${esc(r.bikeName)}</strong> (${esc(r.owner)})</div>
+        ${r.comment ? `<div style="margin-top:6px;font-size:13px;">${esc(r.comment)}</div>` : ''}
+        ${r.flagged ? `<div class="muted" style="font-size:10.5px;margin-top:6px;">🚩 Reported — pending admin review</div>` : `<button class="btn btn-secondary btn-small" style="width:auto;margin-top:8px;padding:5px 10px;font-size:11px;" onclick="flagReview(${r.ts})">Report review</button>`}
+      </div>
+    `;
+  }).join('');
+}
+
+function flagReview(ts){
+  const review = (state.reviews||[]).find(r=>r.ts===ts);
+  if(!review) return;
+  const reason = prompt('Why are you reporting this review? (fake, abusive, off-topic, etc.)');
+  if(reason === null) return;
+  review.flagged = true;
+  review.flagReason = reason.trim().slice(0,200) || '(no reason given)';
+  saveState();
+  renderReviewsFeed();
+  toast('Reported — an admin will take a look.', 'ok');
+}
+
+/* ===================== CHAT (monitored, per-rental thread) ===================== */
+function chatIdFor(bikeCode, riderEmail){ return `${bikeCode}__${riderEmail}`; }
+
+let activeChatId = null;
+let _chatPollTimer = null;
+
+function openChat(bikeCode){
+  const session = getSession();
+  if(!session){ toast('Log in first.', 'err'); return; }
+  const bike = state.bikes.find(b=>b.code===bikeCode);
+  if(!bike) return;
+
+  // if the current user IS the owner, they're replying to whichever rider they're viewing —
+  // otherwise the current user is the rider messaging the owner
+  const riderEmail = (bike.ownerEmail === session.email) ? (bike.reservedByEmail || bike.chatRiderEmail || session.email) : session.email;
+  activeChatId = chatIdFor(bikeCode, riderEmail);
+
+  renderChatModal(bike, riderEmail);
+  clearInterval(_chatPollTimer);
+  _chatPollTimer = setInterval(async ()=>{
+    state = await loadState();
+    if(activeChatId) renderChatMessages();
+  }, 3000);
+}
+
+function renderChatModal(bike, riderEmail){
+  document.getElementById('rentalModalBody').innerHTML = `
+    <h3 style="margin-top:0;">${vehicleIcon(bike.type)} ${esc(bike.name)} — chat</h3>
+    <p class="muted" style="font-size:11.5px;">Monitored by BikeRidge to help resolve disputes.</p>
+    <div id="chatMessages" style="max-height:280px;overflow-y:auto;margin:10px 0;display:flex;flex-direction:column;gap:8px;"></div>
+    <input id="chatInput" placeholder="Type a message…" onkeydown="if(event.key==='Enter')sendChatMessage()">
+    <button class="btn btn-primary btn-small" style="margin-top:8px;" onclick="sendChatMessage()">Send</button>
+    <button class="btn btn-secondary btn-small" style="margin-top:8px;" onclick="closeChat()">Close</button>
+  `;
+  document.getElementById('rentalModalBg').classList.add('show');
+  renderChatMessages();
+}
+
+function renderChatMessages(){
+  const box = document.getElementById('chatMessages');
+  if(!box || !activeChatId) return;
+  const thread = (state.chats && state.chats[activeChatId]) || { messages: [] };
+  const session = getSession();
+  box.innerHTML = thread.messages.map(m=>{
+    const mine = session && m.senderEmail === session.email;
+    return `<div style="align-self:${mine?'flex-end':'flex-start'};max-width:80%;background:${mine?'var(--trail-green)':'var(--panel2)'};color:${mine?'#08120D':'var(--text)'};padding:8px 12px;border-radius:12px;font-size:13px;">
+      <div>${esc(m.text)}</div>
+      <div style="font-size:10px;opacity:0.7;margin-top:2px;">${esc(m.sender)} · ${new Date(m.ts).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</div>
+    </div>`;
+  }).join('') || '<p class="muted">No messages yet — say hi.</p>';
+  box.scrollTop = box.scrollHeight;
+}
+
+// Escrow-style fraud guard: block phone numbers / emails / obvious "let's talk
+// off the app" attempts. This is what keeps a rental inside BikeRidge's paper
+// trail instead of a scammer moving the deal somewhere unmonitored.
+const CONTACT_PATTERN = /(\+?\d[\d\s\-().]{7,}\d)|([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})|(whats ?app|telegram|snapchat|insta(gram)?|venmo|cashapp|e-?transfer|wire me|off.?app|outside (the )?app)/i;
+
+let _lastChatSendTs = 0;
+async function sendChatMessage(){
+  const input = document.getElementById('chatInput');
+  const text = input.value.trim().slice(0, 500);
+  if(!text || !activeChatId) return;
+  const session = getSession();
+  if(!session) return;
+
+  // basic spam throttle — one message per 1.5s per browser tab
+  const now = Date.now();
+  if(now - _lastChatSendTs < 1500){ toast('Sending too fast — slow down a sec.', 'err'); return; }
+  _lastChatSendTs = now;
+
+  state = await loadState();
+  state.chats = state.chats || {};
+  state.chats[activeChatId] = state.chats[activeChatId] || { messages: [] };
+
+  if(CONTACT_PATTERN.test(text)){
+    // Message is blocked from the thread and instead logged as a flag for
+    // BikeRidge review — the sender sees why, the other party never sees it.
+    state.reports = state.reports || [];
+    state.reports.push({
+      bikeCode: activeChatId.split('__')[0],
+      type: 'Suspicious Chat Message',
+      details: `Blocked message containing contact info/off-platform request from ${currentUser()}: "${text.slice(0,200)}"`,
+      evidence: false,
+      status: 'Open',
+      filedBy: 'BikeRidge System',
+      accusedRider: currentUser(),
+      autoFlagged: true,
+      ts: now
+    });
+    await saveStateNow();
+    toast('That message looks like it\'s sharing contact info — messages must stay in BikeRidge chat for your protection. It was not sent.', 'err');
+    return;
+  }
+
+  state.chats[activeChatId].messages.push({ sender: currentUser(), senderEmail: session.email, text, ts: now });
+  await saveStateNow();
+  input.value = '';
+  renderChatMessages();
+}
+
+function closeChat(){
+  clearInterval(_chatPollTimer);
+  activeChatId = null;
+  closeModal();
+}
+
+function renderChatThreadsList(){
+  const wrap = document.getElementById('chatThreadsList');
+  if(!wrap) return;
+  const session = getSession();
+  if(!session || !state.chats){ wrap.innerHTML = '<p class="muted">No conversations yet.</p>'; return; }
+
+  const myThreads = Object.entries(state.chats).filter(([id, t])=>
+    t.messages.some(m=>m.senderEmail===session.email) || id.endsWith('__'+session.email)
+  );
+  if(myThreads.length===0){ wrap.innerHTML = '<p class="muted">No conversations yet.</p>'; return; }
+
+  wrap.innerHTML = myThreads.map(([id, t])=>{
+    const [bikeCode] = id.split('__');
+    const bike = state.bikes.find(b=>b.code===bikeCode);
+    const last = t.messages[t.messages.length-1];
+    return `<div class="card tight row" style="cursor:pointer;" onclick="openChat('${bikeCode}')">
+      <div>
+        <div style="font-weight:700;font-size:13px;">${esc(bike ? bike.name : bikeCode)}</div>
+        <div class="muted" style="font-size:12px;">${last ? esc(last.text).slice(0,40) : ''}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ===================== SECURITY: INCIDENT REPORTS ===================== */
+let selectedIssue = null;
+document.querySelectorAll('#issueChips .chip').forEach(chip=>{
+  chip.addEventListener('click', ()=>{
+    document.querySelectorAll('#issueChips .chip').forEach(c=>c.classList.remove('active'));
+    chip.classList.add('active');
+    selectedIssue = chip.dataset.issue;
+  });
+});
+
+let evidenceAttached = false;
+function toggleReportForm(){
+  const wrap = document.getElementById('reportFormWrap');
+  const label = document.getElementById('reportToggleLabel');
+  const showing = wrap.style.display === 'block';
+  wrap.style.display = showing ? 'none' : 'block';
+  label.textContent = showing ? '▾' : '▴';
+  if(!showing) renderReports();
+}
+
+function openTrustModal(){
+  document.getElementById('rentalModalBody').innerHTML = `
+    <h3 style="margin-top:0;">How BikeRidge keeps you safe</h3>
+    <p class="muted"><strong>✅ Real protections:</strong> phone number required on every account, GPS-locked unlocks and returns, required photo audits on both ends of every ride with duplicate-photo detection, monitored in-app chat that blocks phone numbers/off-app contact attempts, reviews limited to riders who actually completed a ride, automatic flags on rides that run 48+ hours without being ended, and account holds after repeated unresolved reports.</p>
+    <p class="muted" style="margin-top:10px;"><strong>What's still on you:</strong> nothing stops someone from physically walking off with an unlocked bike — no app can replace a real lock. If something goes wrong, use Report an Issue immediately; the last rider's identity and location are on record.</p>
+    <button class="btn btn-secondary" onclick="closeModal()">Close</button>
+  `;
+  document.getElementById('rentalModalBg').classList.add('show');
+}
+
+function attachEvidence(){
+  evidenceAttached = true;
+  const slot = document.getElementById('evidenceSlot');
+  slot.classList.add('done');
+  slot.querySelector('div:last-child').textContent = 'Evidence attached ✓';
+  toast('Evidence photo attached.', 'ok');
+}
+
+function submitReport(){
+  const code = document.getElementById('reportBikeCode').value.trim().toUpperCase();
+  const details = document.getElementById('reportDetails').value.trim();
+  if(!selectedIssue){ toast('Choose an issue type.', 'err'); return; }
+  if(!code){ toast('Enter the bike code.', 'err'); return; }
+
+  const reportedBike = state.bikes.find(b=>b.code===code);
+  state.reports.push({
+    bikeCode: code,
+    type: selectedIssue,
+    details: details || '(no details provided)',
+    evidence: evidenceAttached,
+    status: 'Open',
+    filedBy: currentUser(),
+    accusedRider: reportedBike ? (reportedBike.rider || reportedBike.reservedBy || '') : '',
+    ts: Date.now()
+  });
+  saveState();
+  renderReports();
+
+  document.getElementById('reportBikeCode').value = '';
+  document.getElementById('reportDetails').value = '';
+  document.querySelectorAll('#issueChips .chip').forEach(c=>c.classList.remove('active'));
+  selectedIssue = null;
+  evidenceAttached = false;
+  const slot = document.getElementById('evidenceSlot');
+  slot.classList.remove('done');
+  slot.querySelector('div:last-child').textContent = 'Tap to attach evidence photo';
+
+  toast('Report filed — safety desk notified.', 'ok');
+}
+
+function renderReports(){
+  const tbody = document.querySelector('#reportsTable tbody');
+  const empty = document.getElementById('reportsEmpty');
+  const mine = state.reports.slice().reverse();
+  if(mine.length===0){ tbody.innerHTML=''; empty.style.display='block'; return; }
+  empty.style.display = 'none';
+  tbody.innerHTML = mine.map(r=>`<tr><td>${esc(r.bikeCode)}</td><td>${esc(r.type)}</td><td>${esc(r.status)}</td></tr>`).join('');
+}
+
+/* ===================== REAL AUTH (signup / login) ===================== */
+const SESSION_KEY = 'bikeridge_session';
+
+async function sha256(text){
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+function getSession(){
+  try{
+    const s = JSON.parse(localStorage.getItem(SESSION_KEY));
+    if(!s) return null;
+    if(Date.now() - s.at > SESSION_MAX_AGE_MS){
+      clearSession();
+      return null;
+    }
+    return s;
+  }catch(e){ return null; }
+}
+function setSession(email){ localStorage.setItem(SESSION_KEY, JSON.stringify({email, at: Date.now()})); }
+function clearSession(){ localStorage.removeItem(SESSION_KEY); }
+
+let authMode = 'login';
+function switchAuthTab(mode){
+  authMode = mode;
+  document.getElementById('tabLogin').classList.toggle('active', mode==='login');
+  document.getElementById('tabSignup').classList.toggle('active', mode==='signup');
+  document.getElementById('authSignupExtra').style.display = mode==='signup' ? 'block' : 'none';
+  document.getElementById('authSubmitBtn').textContent = mode==='signup' ? 'Create account' : 'Log in';
+  document.getElementById('authError').style.display = 'none';
+}
+
+
+async function submitAuth(){
+  const email = document.getElementById('authEmail').value.trim().toLowerCase();
+  const password = document.getElementById('authPassword').value;
+  const errEl = document.getElementById('authError');
+  errEl.style.display = 'none';
+
+  if(!email || !password || password.length < 6){
+    errEl.textContent = 'Enter a real email and a password of 6+ characters.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  // pull the latest shared state so we're checking real accounts, not a stale local copy
+  state = await loadState();
+  state.users = state.users || [];
+  const hash = await sha256(password);
+  const existing = state.users.find(u=>u.email===email);
+
+  if(authMode === 'signup'){
+    if(existing){ errEl.textContent = 'An account with that email already exists — log in instead.'; errEl.style.display='block'; return; }
+    const name = document.getElementById('authName').value.trim() || email.split('@')[0];
+    const phone = document.getElementById('authPhone').value.trim();
+    const phoneDigits = phone.replace(/\D/g,'');
+    if(phoneDigits.length < 10){
+      errEl.textContent = 'Enter a real phone number (at least 10 digits).';
+      errEl.style.display = 'block';
+      return;
+    }
+    state.users.push({email, passwordHash: hash, name, phone, createdAt: Date.now(), verified: true, failedLogins: 0});
+    const saved = await saveStateNow();
+    if(!saved){ errEl.textContent = 'Could not create account — try again.'; errEl.style.display='block'; return; }
+    setSession(email);
+    toast('Account created — welcome, ' + name + '.', 'ok');
+    enterApp(name);
+  } else {
+    // lockout: 5 wrong passwords locks the account for 15 minutes
+    if(existing && existing.lockUntil && Date.now() < existing.lockUntil){
+      const mins = Math.ceil((existing.lockUntil - Date.now())/60000);
+      errEl.textContent = `Too many failed attempts — try again in ${mins} minute${mins>1?'s':''}.`;
+      errEl.style.display = 'block';
+      return;
+    }
+    if(!existing || existing.passwordHash !== hash){
+      if(existing){
+        existing.failedLogins = (existing.failedLogins||0) + 1;
+        if(existing.failedLogins >= 5){
+          existing.lockUntil = Date.now() + 15*60*1000;
+          existing.failedLogins = 0;
+        }
+        saveState();
+      }
+      errEl.textContent = 'Wrong email or password.';
+      errEl.style.display = 'block';
+      return;
+    }
+    existing.failedLogins = 0;
+    delete existing.lockUntil;
+    if(existing.banned){
+      errEl.textContent = 'This account has been suspended. Contact support if you think this is a mistake.';
+      errEl.style.display = 'block';
+      return;
+    }
+    saveState();
+    setSession(email);
+    toast('Welcome back, ' + existing.name + '.', 'ok');
+    enterApp(existing.name);
+  }
+}
+
+function logOut(){
+  clearSession();
+  document.getElementById('mainApp').style.display = 'none';
+  document.getElementById('authGate').style.display = 'flex';
+}
+
+function enterApp(name){
+  state.currentUser = name;
+  saveState();
+  document.getElementById('authGate').style.display = 'none';
+  document.getElementById('mainApp').style.display = 'flex';
+  document.getElementById('userChip').textContent = '👤 ' + name;
+  document.getElementById('dashUserLabel').textContent = name;
+  document.getElementById('adminTabBtn').style.display = isAdmin() ? 'block' : 'none';
+  renderSyncBadge();
+  renderPinMap();
+  renderAll();
+  renderReports();
+  renderSellerStatusCard();
+}
+
+function exportPayoutHistoryCSV(){
+  const user = currentUser();
+  const myBikes = state.bikes.filter(b=>b.owner===user);
+  const rows = [['Bike name','Bike code','Rider','Amount','Date']];
+  myBikes.forEach(b=>{
+    (b.riderHistory||[]).forEach(r=>{
+      rows.push([b.name, b.code, r.rider, r.amount.toFixed(2), new Date(r.ts).toISOString()]);
+    });
+  });
+  if(rows.length === 1){ toast('No payout history yet.', 'err'); return; }
+  const csv = rows.map(r => r.map(cell => `"${String(cell).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], {type: 'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `bikeridge-payouts-${user.replace(/\s+/g,'_')}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  toast('CSV downloaded.', 'ok');
+}
+
+function renderDashboard(){
+  const user = currentUser();
+  document.getElementById('dashUserLabel').textContent = user;
+
+  const myBikes = state.bikes.filter(b=>b.owner===user);
+  const earnings = myBikes.reduce((s,b)=>s+b.earnings,0);
+  const ledger = (state.ledger||[]).filter(l=>l.user===user);
+  const spent = ledger.reduce((s,l)=>s+l.amount,0);
+
+  document.getElementById('statEarnings').textContent = fmt(earnings);
+  document.getElementById('statSpent').textContent = fmt(spent);
+  document.getElementById('statRides').textContent = ledger.length + myBikes.reduce((s,b)=>s+b.rides,0);
+
+  const mb = document.querySelector('#myBikesTable tbody');
+  const mbEmpty = document.getElementById('myBikesEmpty');
+  if(myBikes.length===0){ mb.innerHTML=''; mbEmpty.style.display='block'; }
+  else{
+    mbEmpty.style.display='none';
+    mb.innerHTML = myBikes.map(b=>`<tr><td>${esc(b.name)}</td><td><span class="badge ${b.status}">${b.status.replace('_',' ')}</span></td><td>${fmt(b.earnings)}</td></tr>`).join('');
+  }
+
+  const rh = document.querySelector('#rideHistoryTable tbody');
+  const rhEmpty = document.getElementById('rideHistoryEmpty');
+  if(ledger.length===0){ rh.innerHTML=''; rhEmpty.style.display='block'; }
+  else{
+    rhEmpty.style.display='none';
+    rh.innerHTML = ledger.slice().reverse().map(l=>`<tr><td>${l.bikeName}</td><td>Rider</td><td>${fmt(l.amount)}</td></tr>`).join('');
+  }
+}
+
+/* ===================== RENDER ALL / POLL ===================== */
+const OVERDUE_MS = 48 * 60 * 60 * 1000; // 48 hours — a ride left open this long auto-flags for review
+
+// Anti-theft: a bike that's been "in use" for 48+ hours with no end-ride
+// gets auto-flagged once, so it surfaces to BikeRidge/the owner instead of
+// silently vanishing off the map.
+function checkOverdueRides(){
+  let changed = false;
+  (state.bikes||[]).forEach(bike=>{
+    if(bike.status !== 'in_use' || !bike.rideStartedAt) return;
+    if(Date.now() - bike.rideStartedAt < OVERDUE_MS) return;
+    state.reports = state.reports || [];
+    const already = state.reports.some(r => r.bikeCode === bike.code && r.autoFlagged && r.status === 'Open');
+    if(already) return;
+    state.reports.push({
+      bikeCode: bike.code,
+      type: 'Stolen/Missing Bike',
+      details: `Auto-flagged: ride started ${new Date(bike.rideStartedAt).toLocaleString()} and was never ended (48h+ overdue).`,
+      evidence: false,
+      status: 'Open',
+      filedBy: 'BikeRidge System',
+      accusedRider: bike.rider || '',
+      autoFlagged: true,
+      ts: Date.now()
+    });
+    changed = true;
+  });
+  if(changed) saveState();
+}
+
+function renderAll(){
+  checkOverdueRides();
+  renderMap();
+  updateUnreadBadge();
+  updateSyncIndicator();
+  const dashScreen = document.getElementById('screen-dashboard');
+  if(dashScreen && dashScreen.classList.contains('active')){
+    renderDashboard();
+    renderReports();
+  }
+  const communityScreen = document.getElementById('screen-community');
+  if(communityScreen && communityScreen.classList.contains('active')) renderCommunityFeed();
+}
+
+/* ===================== LOCATION DETECTION (works anywhere in the world) ===================== */
+let userLocation = null; // {lat, lng}
+let userCityLabel = 'your area';
+
+// Free reverse geocoding, no API key — OpenStreetMap's Nominatim. Only
+// called once per session, right after we already have lat/lng, purely to
+// get a friendly city name for the header.
+async function detectUserCity(){
+  return new Promise((resolve)=>{
+    if(!navigator.geolocation){
+      detectCityByIP().then(resolve);
+      return;
+    }
+    const fallbackTimer = setTimeout(()=>{ detectCityByIP().then(resolve); }, 8500);
+    navigator.geolocation.getCurrentPosition(async (pos)=>{
+      clearTimeout(fallbackTimer);
+      userLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      try{
+        const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${userLocation.lat}&lon=${userLocation.lng}&zoom=10`);
+        const data = await r.json();
+        const addr = data.address || {};
+        const city = addr.city || addr.town || addr.village || addr.municipality || addr.county || '';
+        const region = addr.state || addr.country || '';
+        userCityLabel = [city, region].filter(Boolean).join(', ') || 'your area';
+      }catch(err){
+        userCityLabel = 'your area';
+      }
+      resolve();
+    }, ()=>{
+      // GPS permission denied/unavailable — fall back to a rough IP-based
+      // location instead of defaulting to a fixed point (which is exactly
+      // what caused the app to show a random spot on Earth before).
+      clearTimeout(fallbackTimer);
+      detectCityByIP().then(resolve);
+    }, { enableHighAccuracy: true, timeout: 8000 });
+  });
+}
+
+// Rough, no-permission-needed fallback using the visitor's IP address.
+// Free, no API key. Accurate to city-level, not GPS-precise — good enough
+// for centering a map and showing "X, Country" in the header.
+async function detectCityByIP(){
+  try{
+    const r = await fetch('https://ipapi.co/json/');
+    const data = await r.json();
+    if(typeof data.latitude === 'number' && typeof data.longitude === 'number'){
+      userLocation = { lat: data.latitude, lng: data.longitude };
+      userCityLabel = [data.city, data.country_name].filter(Boolean).join(', ') || 'your area';
+    }
+  }catch(err){
+    // total failure (offline, blocked, etc) — leave userLocation null,
+    // renderMap() shows a world view rather than guessing a location
+  }
+}
+
+function applyCityLabel(){
+  const el = document.getElementById('mapSubLabel');
+  if(el) el.textContent = `${userCityLabel} · live status, updates every few seconds`;
+  const heroEl = document.getElementById('heroLocationLabel');
+  if(heroEl) heroEl.textContent = userCityLabel === 'your area' ? 'wherever you are' : userCityLabel;
+}
+
+async function boot(){
+  await detectUserCity();
+  applyCityLabel();
+  state = await loadState();
+
+  const session = getSession();
+  const user = session ? (state.users||[]).find(u=>u.email===session.email) : null;
+  if(user && user.verified && !user.banned){
+    // already logged in and verified on this device — skip straight to the app
+    document.getElementById('authGate').style.display = 'none';
+    document.getElementById('mainApp').style.display = 'flex';
+    enterApp(currentUser());
+  } else {
+    document.getElementById('authGate').style.display = 'flex';
+    switchAuthTab('login');
+  }
+}
+
+/* ===================== REAL PWA INSTALL GATE ===================== */
+let deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', (e)=>{
+  e.preventDefault();
+  deferredInstallPrompt = e;
+});
+
+function isStandalone(){
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+
+async function initInstallGate(){
+  if(isStandalone()){
+    // already installed and running as an app — skip the gate entirely
+    document.getElementById('installGate').style.display = 'none';
+    boot();
+    return;
+  }
+
+  document.getElementById('installBtn').addEventListener('click', async ()=>{
+    if(deferredInstallPrompt){
+      deferredInstallPrompt.prompt();
+      const choice = await deferredInstallPrompt.userChoice;
+      if(choice.outcome === 'accepted'){
+        document.getElementById('installGate').style.display = 'none';
+        boot();
+      }
+      deferredInstallPrompt = null;
+    } else {
+      // iOS Safari and some browsers don't support the programmatic prompt —
+      // give real, honest manual instructions instead of faking a button.
+      document.getElementById('installHelp').textContent =
+        'Your browser doesn\'t support one-tap install. On iPhone: tap the Share icon → "Add to Home Screen". On Android/Chrome: menu (⋮) → "Install app".';
+    }
+  });
+
+  document.getElementById('skipInstallBtn').addEventListener('click', ()=>{
+    document.getElementById('installGate').style.display = 'none';
+    boot();
+  });
+}
+initInstallGate();
+
+// polling — pulls the shared bin every few seconds so two phones stay in sync
+// and nothing goes stale between users; also releases stale reservations locally.
+setInterval(async ()=>{
+  releaseStaleReservations();
+  const fresh = await loadState();
+  state = fresh;
+  renderAll();
+}, 5000);
+setInterval(updateSyncIndicator, 1000); // smooth "Xs ago" ticking between syncs
+
+/* ===================== SYNC SETTINGS ===================== */
+function renderSyncBadge(){
+  const chip = document.getElementById('syncChip');
+  chip.textContent = '🔗 Synced';
+  chip.style.color = 'var(--trail-green)';
+}
+</script>
+</body>
+</html>
