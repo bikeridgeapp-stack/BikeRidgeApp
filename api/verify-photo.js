@@ -1,3 +1,26 @@
+/**
+ * api/verify-photo.js
+ * ---------------------------------------------------------------
+ * Real fix for "any photo works" on the pre-ride audit. Uses Google
+ * Gemini (free tier, no credit card) for two checks in one call:
+ *   1. Is this actually a bike/e-bike/scooter/e-scooter/rollerskates/
+ *      skateboard (or a person with one)?
+ *   2. If a listing reference photo is provided — is this the SAME
+ *      physical item, even from a different angle?
+ *
+ * ENV VAR NEEDED (free — no credit card required):
+ *   GEMINI_API_KEY — from aistudio.google.com → "Get API key"
+ *
+ * If this key isn't set, responds { skipped: true } and the app
+ * falls back to its file-type + duplicate-photo checks only.
+ *
+ * POST body:
+ *   imageBase64            (required) — the just-taken photo
+ *   mediaType               (required)
+ *   referenceImageBase64    (optional) — the listing's reference photo
+ *   referenceMediaType      (optional)
+ * ---------------------------------------------------------------
+ */
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
 
