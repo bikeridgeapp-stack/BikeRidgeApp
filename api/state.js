@@ -34,34 +34,26 @@ module.exports = async function handler(req, res) {
   }
 
   if (req.method === 'PUT') {
+    // --- basic write validation so a stray bug or a malicious request can't
+    // corrupt or blow up the shared bin (defense in depth, not a full schema check) ---
     const body = req.body;
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
       return res.status(400).json({ error: 'Invalid state payload' });
     }
-
     const size = Buffer.byteLength(JSON.stringify(body));
-    if (size > 5 * 1024 * 1024) {
+    if (size > 5 * 1024 * 1024) { // 5MB cap — allows multi-photo listings + community posts, still blocks abuse
       return res.status(413).json({ error: 'State payload too large' });
     }
-
     try {
       const r = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_ID}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Master-Key': JSONBIN_KEY
-        },
+        headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_KEY },
         body: JSON.stringify(req.body)
       });
-
       if (!r.ok) throw new Error('JSONBin rejected the write');
-
       return res.status(200).json({ ok: true });
     } catch (err) {
-      return res.status(500).json({
-        error: 'Failed to save state',
-        detail: String(err)
-      });
+      return res.status(500).json({ error: 'Failed to save state', detail: String(err) });
     }
   }
 
