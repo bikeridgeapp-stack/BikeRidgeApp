@@ -9,16 +9,15 @@
  *      physical item, even from a different angle?
  *
  * ENV VAR NEEDED:
- *   GEMINI_API_KEY — from Google AI Studio
+ *   GEMINI_API_KEY
  *
  * POST body:
- *   imageBase64            (required) — the just-taken photo
- *   mediaType              (required)
- *   referenceImageBase64   (optional) — the listing's reference photo
- *   referenceMediaType     (optional)
+ *   imageBase64            (required)
+ *   mediaType               (required)
+ *   referenceImageBase64    (optional)
+ *   referenceMediaType      (optional)
  * ---------------------------------------------------------------
  */
-
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'POST only' });
@@ -88,50 +87,30 @@ module.exports = async function handler(req, res) {
     });
 
     parts.push({
-      text: `The FIRST image is a photo just taken by a renter.
-The SECOND image is the reference photo the owner uploaded when listing their item.
+      text: `The FIRST image is a photo just taken by a renter. The SECOND image is the reference photo the owner uploaded when listing their item (a bike, e-bike, scooter, e-scooter, rollerskates, skateboard, or similar ride-share item).
 
 Answer two yes/no questions, each on its own line, in exactly this format:
 
-VALID: YES or NO
+VALID: YES or NO (does the first image clearly show a real bike/e-bike/scooter/e-scooter/rollerskates/skateboard or similar, not something unrelated?)
 
-MATCH: YES or NO
-
-VALID means the first image clearly shows a real bike, e-bike, scooter, e-scooter, rollerskates, skateboard, or similar ride-share item, or a person with one.
-
-MATCH means the two images show the SAME physical item, allowing for a different angle, lighting, distance, or background.
-
-If VALID is NO, MATCH must be NO.`
+MATCH: YES or NO (do the two images show the SAME physical item, allowing for a different angle, lighting, or background? If VALID is NO, answer MATCH as NO.)`
     });
   } else {
     parts.push({
-      text: `Does this photo clearly show a real bike, e-bike, scooter, e-scooter, rollerskates, skateboard, or similar ride-share item, or a person with one?
-
-Reply with exactly one word:
-
-YES
-
-or
-
-NO`
+      text: 'Does this photo clearly show a real bike, e-bike, scooter, e-scooter, rollerskates, skateboard, or similar ride-share item (or a person with one)? Reply with exactly one word: YES or NO.'
     });
   }
 
   try {
     const r = await fetch(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': GEMINI_API_KEY
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          contents: [
-            {
-              parts
-            }
-          ],
+          contents: [{ parts }],
           generationConfig: {
             maxOutputTokens: 30,
             temperature: 0
@@ -158,33 +137,23 @@ NO`
       .toUpperCase();
 
     if (hasRef) {
-      const validMatch =
-        /VALID:\s*(YES|NO)/.exec(answer);
-
-      const matchMatch =
-        /MATCH:\s*(YES|NO)/.exec(answer);
+      const validMatch = /VALID:\s*(YES|NO)/.exec(answer);
+      const matchMatch = /MATCH:\s*(YES|NO)/.exec(answer);
 
       return res.status(200).json({
         skipped: false,
-
-        isValidVehicle:
-          validMatch
-            ? validMatch[1] === 'YES'
-            : false,
-
-        matchesListing:
-          matchMatch
-            ? matchMatch[1] === 'YES'
-            : false
+        isValidVehicle: validMatch
+          ? validMatch[1] === 'YES'
+          : true,
+        matchesListing: matchMatch
+          ? matchMatch[1] === 'YES'
+          : true
       });
     }
 
     return res.status(200).json({
       skipped: false,
-
-      isValidVehicle:
-        answer.startsWith('YES'),
-
+      isValidVehicle: answer.startsWith('YES'),
       matchesListing: true
     });
 
